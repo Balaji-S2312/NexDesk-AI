@@ -341,15 +341,15 @@ Run the comprehensive automated pytest test suite:
 cd backend
 .venv\Scripts\python -m pytest tests -q
 ```
-*Current test suite status: **136 passed, 0 failed**.*
+*Current test suite status: **141 passed, 0 failed**.*
 
-Run frontend production build and linting checks:
+Run frontend linting, TypeScript checks, and production build:
 ```bash
 cd frontend
-npx tsc --noEmit
+npm run lint
 npm run build
 ```
-*Frontend status: **0 errors**.*
+*Frontend status: **0 warnings, 0 errors** (`tsc && vite build` clean).*
 
 For full QA telemetry, see [QA_REPORT.md](QA_REPORT.md). For cloud deployment manifests, PostgreSQL migration instructions, and environment setup, see [DEPLOYMENT.md](DEPLOYMENT.md).
 

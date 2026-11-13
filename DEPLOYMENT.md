@@ -7,7 +7,7 @@
 | **Backend Production Hardening** | **Configured & Tested** | PostgreSQL pooling (`psycopg2-binary`), `postgres://` URL normalization, safe SQLite-only dialect guard on migrations, `/api/health` subsystem checks, startup secret validation. |
 | **Frontend Production Build** | **Configured & Tested** | Production `tsc && vite build` clean (`0` errors), `/api` production fallback (no hardcoded `localhost`), SPA routing configs (`vercel.json`, `public/_redirects`), demo credential helper disabled in standard `PROD` builds. |
 | **Container & Cloud Manifests** | **Configured** | `render.yaml`, `Procfile`, `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.prod.yml`, sanitized `.env.example`, and `backend/scripts/migrate_sqlite_to_postgres.py`. |
-| **SMTP Email Integration** | **Configured & Live-Tested** | Verified live Gmail SMTP delivery (`smtp.gmail.com:587`) to `balaji.poet2312s@gmail.com`. |
+| **SMTP Email Integration** | **Configured (Platform-Gated on Render Free Tier)** | SMTP configured (`smtp.gmail.com:587` TLS) and 6-digit OTP rendering/logging unit-tested; **Render Free Tier** blocks outbound TCP ports `25/465/587` (`[Errno 101] Network is unreachable` in `EmailDeliveryLog`), requiring either Render Starter tier or an HTTPS Email API provider (port `443`) for live Render cloud delivery. |
 | **Frontend Public Deployment (Vercel)** | **LIVE (`https://nexdesk-ai.vercel.app`)** | Connected to `Balaji-S2312/NexDesk-AI` (`rootDirectory: frontend`, Vite framework). Wired to `VITE_API_URL=https://nexdesk-backend-z98v.onrender.com/api`. HTTPS, SPA rewrites, security headers, Admin Dashboard telemetry, Incidents, Notifications, and AI Assistant verified live. |
 | **Backend Public Deployment (Render)** | **LIVE (`https://nexdesk-backend-z98v.onrender.com`)** | Python Web Service (`rootDir: backend`, connected to `Balaji-S2312/NexDesk-AI`). Optimized for 512 MB free-tier containers (`vector_store.count() == 0` fast path + ChromaDB `ONNXMiniLM_L6_V2` low-memory embeddings). Connected to external Neon PostgreSQL, Groq LLM API, and Gmail SMTP. |
 
@@ -166,11 +166,16 @@ VITE_API_URL=https://your-backend.onrender.com/api
   - [x] `POST /api/tickets` -> `201 Created`, `PATCH /api/tickets/{id}` -> `200 OK` (`in_progress` -> `resolved`), real-time notifications updated in UI.
   - [x] Live browser UI verification on `https://nexdesk-ai.vercel.app`: Admin Dashboard KPIs & Recharts trends, Incidents queue, Notification Bell, and AI Assistant chat verified cleanly with zero 4xx/5xx/CORS errors.
 
+  - [x] **6-Digit Email OTP & Adaptive Dropdown Production Fix (`2f52be2`):**
+    - Verified `/api/auth/send-otp` cooldown (`429`), anti-enumeration (`200`), wrong-OTP rejection (`400`), duplicate registration guard (`409`), unverified ticket creation gate (`403`), and clean `verify-email` validation (`400`) on live Render.
+    - Verified `/login`, `/register` duplicate alert + confirmation card, `/verify-email` (zero `?email=` query parameter, 6 individual digit boxes, countdown timer), `/profile` Verified badge, and `AdaptiveSelect` category icons on desktop floating panels & `390x844` mobile bottom sheets on live `https://nexdesk-ai.vercel.app`.
+    - Live `EmailDeliveryLog` inspection (`GET /api/notifications/email-history`) confirmed Render Free Tier blocks outbound SMTP port `587` (`[Errno 101] Network is unreachable`), while logging and handling the `503` failure cleanly without falsely verifying accounts.
+
 ---
 
 ## 7. Local Pre-Push Verification Summary
 
-- **Backend Automated Tests (`pytest backend/tests/ -q`):** **136 passed, 0 failed** (Modules 1–13 including low-memory OOM/RAG changes, PostgreSQL compatibility, health checks, RBAC, Agentic HITL, SLA, and SMTP verification).
+- **Backend Automated Tests (`pytest backend/tests/ -q`):** **141 passed, 0 failed** (Modules 1–13 plus OTP hashing, cooldown, lockout, expiry, reuse prevention, anti-enumeration, `409` duplicate registration guard, SMTP failure `503` handling, PostgreSQL compatibility, RBAC, Agentic HITL, SLA, and ONNX RAG).
 - **Low-Memory ONNX Embedding Check (`LOW_MEMORY_EMBEDDINGS=true`):** Verified 384-dim embeddings generated cleanly via `ONNXMiniLM_L6_V2`.
-- **Frontend Production Build (`tsc && vite build`):** `0` TypeScript errors, clean production bundle in `frontend/dist/`.
-- **Live SMTP Delivery:** Confirmed live delivery over `smtp.gmail.com:587` to `balaji.poet2312s@gmail.com`.
+- **Frontend Verification (`npm run lint && npm run build`):** `eslint --max-warnings 0` (`0` warnings/errors), `tsc` (`0` errors), clean Vite production bundle in `frontend/dist/`.
+- **Live SMTP Delivery Note:** Application SMTP delivery works over `smtp.gmail.com:587` TLS where outbound port `587` is permitted; Render Free Web Services block outbound SMTP ports `25`, `465`, and `587` (`[Errno 101] Network is unreachable`), so live cloud email delivery on Render requires upgrading to a paid Render tier (`Starter`+) or switching email transport to an HTTPS REST Email API over port `443` (e.g., Resend or Brevo).
