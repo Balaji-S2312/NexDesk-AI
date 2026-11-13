@@ -52,22 +52,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const register = async (credentials: RegisterCredentials) => {
-    setIsLoading(true);
+  const register = async (credentials: RegisterCredentials): Promise<User> => {
     setError(null);
     try {
-      await registerApi(credentials);
-      // Automatically log in newly registered user
-      await login({
-        email: credentials.email,
-        password: credentials.password
-      });
+      const createdUser = await registerApi(credentials);
+      return createdUser;
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed.';
       setError(errorMessage);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 

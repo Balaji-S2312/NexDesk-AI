@@ -4,6 +4,7 @@ import { getUsersApi } from '../services/api';
 import { User } from '../types/auth';
 import { Users, Shield, Plus, Mail } from 'lucide-react';
 import { Modal } from '../components/Modal';
+import { AdaptiveSelect } from '../components/AdaptiveSelect';
 
 interface GroupInfo {
   id: number;
@@ -239,16 +240,17 @@ export const AdminAssignmentGroups = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Support Tier</label>
-            <select
+            <label className="block text-xs font-semibold text-[#172B3A] mb-1">Support Tier</label>
+            <AdaptiveSelect
+              label="Support Tier"
               value={newGroupTier}
-              onChange={(e) => setNewGroupTier(e.target.value)}
-              className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white"
-            >
-              <option value="Tier 1">Tier 1 - Helpdesk / Triage</option>
-              <option value="Tier 2">Tier 2 - Specialized Engineering</option>
-              <option value="Tier 3">Tier 3 - Core Infrastructure / DevOps</option>
-            </select>
+              onChange={(val) => setNewGroupTier(val)}
+              options={[
+                { value: 'Tier 1', label: 'Tier 1 - Helpdesk / Triage' },
+                { value: 'Tier 2', label: 'Tier 2 - Specialized Engineering' },
+                { value: 'Tier 3', label: 'Tier 3 - Core Infrastructure / DevOps' },
+              ]}
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>

@@ -17,6 +17,8 @@ import {
   previewPriority,
 } from '../utils/ticketOptions';
 import { PriorityBadge } from './PriorityBadge';
+import { AdaptiveSelect } from './AdaptiveSelect';
+import { CategoryIcon } from './CategoryIcon';
 
 interface AgentTicketConfirmCardProps {
   pendingAction: PendingTicketAction;
@@ -140,18 +142,18 @@ export const AgentTicketConfirmCard: React.FC<AgentTicketConfirmCardProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Category</label>
-            <select
+            <label className="block text-[10px] font-semibold text-[#526773] uppercase mb-0.5">Category</label>
+            <AdaptiveSelect
+              size="sm"
+              label="Category"
               value={category}
-              onChange={(e) => setCategory(e.target.value as TicketCategoryValue)}
-              className={inputCls}
-            >
-              {CATEGORY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setCategory(val as TicketCategoryValue)}
+              options={CATEGORY_OPTIONS.map((opt) => ({
+                value: opt.value,
+                label: opt.label,
+                icon: <CategoryIcon category={opt.value} className="w-3.5 h-3.5 text-[#087E8B]" />,
+              }))}
+            />
           </div>
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Subcategory</label>
@@ -166,32 +168,24 @@ export const AgentTicketConfirmCard: React.FC<AgentTicketConfirmCardProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Impact</label>
-            <select
+            <label className="block text-[10px] font-semibold text-[#526773] uppercase mb-0.5">Impact</label>
+            <AdaptiveSelect
+              size="sm"
+              label="Impact"
               value={impact}
-              onChange={(e) => setImpact(e.target.value as ImpactLevel)}
-              className={inputCls}
-            >
-              {IMPACT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setImpact(val as ImpactLevel)}
+              options={IMPACT_OPTIONS}
+            />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Urgency</label>
-            <select
+            <label className="block text-[10px] font-semibold text-[#526773] uppercase mb-0.5">Urgency</label>
+            <AdaptiveSelect
+              size="sm"
+              label="Urgency"
               value={urgency}
-              onChange={(e) => setUrgency(e.target.value as UrgencyLevel)}
-              className={inputCls}
-            >
-              {URGENCY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setUrgency(val as UrgencyLevel)}
+              options={URGENCY_OPTIONS}
+            />
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Settings, Save, Shield, Database, Cpu, Lock } from 'lucide-react';
+import { AdaptiveSelect } from '../components/AdaptiveSelect';
 
 export const AdminSettings = () => {
   const { showToast } = useToast();
@@ -43,15 +44,16 @@ export const AdminSettings = () => {
           <div className="space-y-3 text-xs">
             <div>
               <label className="block font-semibold text-[#172B3A] mb-1">Groq LLM Model Designation</label>
-              <select
+              <AdaptiveSelect
+                label="Groq LLM Model"
                 value={groqModel}
-                onChange={(e) => setGroqModel(e.target.value)}
-                className="w-full px-3 py-2 border border-[#DCE4E3] rounded-lg bg-white text-[#172B3A] focus:outline-none focus:ring-2 focus:ring-[#087E8B]"
-              >
-                <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended for ITSM)</option>
-                <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast Triage / Low Latency)</option>
-                <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 (Legacy)</option>
-              </select>
+                onChange={(val) => setGroqModel(val)}
+                options={[
+                  { value: 'llama-3.3-70b-versatile', label: 'llama-3.3-70b-versatile (Recommended for ITSM)' },
+                  { value: 'llama-3.1-8b-instant', label: 'llama-3.1-8b-instant (Fast Triage / Low Latency)' },
+                  { value: 'mixtral-8x7b-32768', label: 'mixtral-8x7b-32768 (Legacy)' },
+                ]}
+              />
               <span className="text-[11px] text-[#718096] mt-1 block">
                 Primary model used by Tier 1 AI Agent and incident auto-categorization pipeline.
               </span>

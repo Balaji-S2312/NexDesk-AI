@@ -10,6 +10,7 @@ import { PriorityBadge } from './PriorityBadge';
 import { SearchBar } from './SearchBar';
 import { FilterPanel } from './FilterPanel';
 import { CreateTicketModal } from './CreateTicketModal';
+import { AdaptiveSelect } from './AdaptiveSelect';
 import { CATEGORY_OPTIONS, PRIORITY_OPTIONS, STATUS_OPTIONS, formatDateTime, labelFor } from '../utils/ticketOptions';
 
 interface TicketListProps {
@@ -19,9 +20,6 @@ interface TicketListProps {
 }
 
 const PAGE_SIZE = 15;
-
-const selectCls =
-  'text-xs bg-white border border-[#DCE4E3] rounded-lg px-2.5 py-1.5 text-[#172B3A] font-medium focus:outline-none focus:ring-2 focus:ring-[#087E8B] focus:border-[#087E8B] shadow-xs cursor-pointer';
 
 export const TicketList: React.FC<TicketListProps> = ({ scope, title, subtitle }) => {
   const navigate = useNavigate();
@@ -218,21 +216,21 @@ export const TicketList: React.FC<TicketListProps> = ({ scope, title, subtitle }
             onReset={resetFilters}
           />
           {scope === 'all' && (
-            <select
+            <AdaptiveSelect
+              size="sm"
+              label="Filter by Assignment Group"
+              ariaLabel="Filter by Assignment Group"
               value={groupFilter}
-              onChange={(e) => {
-                setGroupFilter(e.target.value);
+              onChange={(val) => {
+                setGroupFilter(val);
                 setPage(1);
               }}
-              className={selectCls}
-            >
-              <option value="">All Groups</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+              className="w-52"
+              options={[
+                { value: '', label: 'All Groups' },
+                ...groups.map((g) => ({ value: String(g.id), label: g.name })),
+              ]}
+            />
           )}
         </div>
       </div>

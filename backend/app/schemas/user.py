@@ -31,8 +31,26 @@ class TokenResponse(BaseModel):
 class VerifyEmailRequest(BaseModel):
     token: Optional[str] = None
 
+
+class SendOTPRequest(BaseModel):
+    email: Optional[EmailStr] = None
+
+
+class VerifyOTPRequest(BaseModel):
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    email: Optional[EmailStr] = None
+
+
+class OTPDispatchResponse(BaseModel):
+    message: str
+    cooldown_seconds: int = 60
+    expires_in_seconds: int = 600
+    already_verified: bool = False
+
+
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
 
 class VerificationStatusResponse(BaseModel):
     email_verified: bool

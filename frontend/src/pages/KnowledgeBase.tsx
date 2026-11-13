@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { AdaptiveSelect } from '../components/AdaptiveSelect';
+import { CategoryIcon } from '../components/CategoryIcon';
 import {
   deleteKnowledgeDocumentApi,
   getKnowledgeDocumentApi,
@@ -556,18 +558,17 @@ export const KnowledgeBase: React.FC = () => {
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Category</label>
-            <select
+            <label className="block font-semibold text-[#172B3A] mb-1">Category</label>
+            <AdaptiveSelect
+              label="Knowledge Category"
               value={uploadCategory}
-              onChange={(e) => setUploadCategory(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
-            >
-              {CATEGORIES.filter((c) => c.value !== 'all').map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setUploadCategory(val)}
+              options={CATEGORIES.filter((c) => c.value !== 'all').map((c) => ({
+                value: c.value,
+                label: c.label,
+                icon: <CategoryIcon category={c.value} className="w-4 h-4 text-[#087E8B]" />,
+              }))}
+            />
           </div>
         </form>
       </Modal>

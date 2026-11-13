@@ -20,8 +20,9 @@ import {
   listNotificationsApi,
   markAllNotificationsReadApi,
   markNotificationReadApi,
-  verifyUserEmailApi,
+  sendVerificationOtpApi,
 } from '../services/api';
+import { PENDING_VERIFY_EMAIL_KEY } from './Register';
 import {
   EmailDeliveryLogItem,
   NotificationConfigStatus,
@@ -142,20 +143,40 @@ export const Notifications: React.FC = () => {
   };
 
   const handleVerifyEmail = async () => {
+    if (!user || verifying) return;
     setVerifying(true);
     try {
-      await verifyUserEmailApi();
-      if (refreshUser) await refreshUser();
+      sessionStorage.setItem(PENDING_VERIFY_EMAIL_KEY, user.email);
+    } catch {
+      // ignore storage errors
+    }
+    try {
+      const res = await sendVerificationOtpApi();
+      if (res.already_verified) {
+        if (refreshUser) await refreshUser();
+        showToast({
+          type: 'success',
+          title: 'Email verified',
+          message: `${user.email} is now marked as verified for notifications.`,
+        });
+        return;
+      }
       showToast({
         type: 'success',
-        title: 'Email verified',
-        message: `${user?.email} is now marked as verified for notifications.`,
+        title: 'Verification code sent',
+        message: `Enter the 6-digit OTP sent to ${user.email}.`,
       });
+      navigate('/verify-email', { state: { email: user.email, otpJustSent: true } });
     } catch (err: unknown) {
+      const apiErr = err as Error & { status?: number };
+      if (apiErr?.status === 429) {
+        navigate('/verify-email', { state: { email: user.email } });
+        return;
+      }
       showToast({
         type: 'error',
-        title: 'Verification failed',
-        message: err instanceof Error ? err.message : 'Could not verify email.',
+        title: 'Unable to send OTP',
+        message: err instanceof Error ? err.message : 'Unable to send verification code.',
       });
     } finally {
       setVerifying(false);
@@ -219,9 +240,9 @@ export const Notifications: React.FC = () => {
             type="button"
             onClick={handleVerifyEmail}
             disabled={verifying}
-            className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0 disabled:opacity-60"
+            className="px-3.5 py-1.5 rounded-lg bg-[#087E8B] hover:bg-[#075C66] text-white text-xs font-semibold shrink-0 disabled:opacity-60 transition-colors"
           >
-            {verifying ? 'Verifying...' : 'Verify Email Now'}
+            {verifying ? 'Sending OTP...' : 'Verify Email Now'}
           </button>
         </div>
       )}

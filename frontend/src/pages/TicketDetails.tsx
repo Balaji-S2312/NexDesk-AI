@@ -41,6 +41,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { PriorityBadge } from '../components/PriorityBadge';
 import { ConfirmationDialog } from '../components/ConfirmationDialog';
 import { Skeleton } from '../components/LoadingSkeleton';
+import { AdaptiveSelect } from '../components/AdaptiveSelect';
+import { CategoryIcon } from '../components/CategoryIcon';
 import {
   CATEGORY_OPTIONS,
   FIELD_LABELS,
@@ -459,51 +461,63 @@ export const TicketDetails: React.FC = () => {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value as StatusValue)} className={inputCls}>
-                    {STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-[#172B3A] mb-1">Status</label>
+                  <AdaptiveSelect
+                    label="Status"
+                    value={status}
+                    onChange={(val) => setStatus(val as StatusValue)}
+                    options={STATUS_OPTIONS}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Assignment group</label>
-                  <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className={inputCls}>
-                    <option value="">Unassigned</option>
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-[#172B3A] mb-1">Assignment group</label>
+                  <AdaptiveSelect
+                    label="Assignment group"
+                    searchable
+                    value={groupId}
+                    onChange={(val) => setGroupId(val)}
+                    options={[
+                      { value: '', label: 'Unassigned' },
+                      ...groups.map((g) => ({ value: String(g.id), label: g.name })),
+                    ]}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value as TicketCategoryValue)} className={inputCls}>
-                    {CATEGORY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-[#172B3A] mb-1">Category</label>
+                  <AdaptiveSelect
+                    label="Category"
+                    value={category}
+                    onChange={(val) => setCategory(val as TicketCategoryValue)}
+                    options={CATEGORY_OPTIONS.map((o) => ({
+                      value: o.value,
+                      label: o.label,
+                      icon: <CategoryIcon category={o.value} className="w-4 h-4 text-[#087E8B]" />,
+                    }))}
+                  />
                 </div>
                 <div className="flex items-end">
-                  <div className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    <span className="text-xs text-slate-600">Priority after save</span>
+                  <div className="w-full flex items-center justify-between bg-[#F7F8F6] border border-[#DCE4E3] rounded-xl px-3 py-2">
+                    <span className="text-xs text-[#526773]">Priority after save</span>
                     <PriorityBadge priority={previewed} />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Impact</label>
-                  <select value={impact} onChange={(e) => setImpact(e.target.value as ImpactLevel)} className={inputCls}>
-                    {IMPACT_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-[#172B3A] mb-1">Impact</label>
+                  <AdaptiveSelect
+                    label="Impact"
+                    value={impact}
+                    onChange={(val) => setImpact(val as ImpactLevel)}
+                    options={IMPACT_OPTIONS}
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Urgency</label>
-                  <select value={urgency} onChange={(e) => setUrgency(e.target.value as UrgencyLevel)} className={inputCls}>
-                    {URGENCY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-[#172B3A] mb-1">Urgency</label>
+                  <AdaptiveSelect
+                    label="Urgency"
+                    value={urgency}
+                    onChange={(val) => setUrgency(val as UrgencyLevel)}
+                    options={URGENCY_OPTIONS}
+                  />
                 </div>
               </div>
               <div>

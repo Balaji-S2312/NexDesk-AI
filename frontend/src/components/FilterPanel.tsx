@@ -1,5 +1,7 @@
 import React from 'react';
 import { Filter, RotateCcw } from 'lucide-react';
+import { AdaptiveSelect } from './AdaptiveSelect';
+import { CategoryIcon } from './CategoryIcon';
 
 interface FilterOption {
   label: string;
@@ -41,52 +43,57 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       </div>
 
       {/* Status Filter */}
-      <select
+      <AdaptiveSelect
+        size="sm"
+        label="Filter by Status"
+        ariaLabel="Filter by Status"
         value={statusFilter}
-        onChange={(e) => onStatusChange(e.target.value)}
-        className="text-xs bg-white border border-[#DCE4E3] rounded-lg px-2.5 py-1.5 text-[#172B3A] font-medium focus:outline-none focus:ring-2 focus:ring-[#087E8B] focus:border-[#087E8B] shadow-xs cursor-pointer"
-      >
-        <option value="">All Statuses</option>
-        {statusOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+        onChange={onStatusChange}
+        className="w-40"
+        options={[
+          { value: '', label: 'All Statuses' },
+          ...statusOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+        ]}
+      />
 
       {/* Priority Filter */}
-      <select
+      <AdaptiveSelect
+        size="sm"
+        label="Filter by Priority"
+        ariaLabel="Filter by Priority"
         value={priorityFilter}
-        onChange={(e) => onPriorityChange(e.target.value)}
-        className="text-xs bg-white border border-[#DCE4E3] rounded-lg px-2.5 py-1.5 text-[#172B3A] font-medium focus:outline-none focus:ring-2 focus:ring-[#087E8B] focus:border-[#087E8B] shadow-xs cursor-pointer"
-      >
-        <option value="">All Priorities</option>
-        {priorityOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+        onChange={onPriorityChange}
+        className="w-40"
+        options={[
+          { value: '', label: 'All Priorities' },
+          ...priorityOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+        ]}
+      />
 
       {/* Category Filter */}
       {categoryOptions && onCategoryChange && (
-        <select
+        <AdaptiveSelect
+          size="sm"
+          label="Filter by Category"
+          ariaLabel="Filter by Category"
           value={categoryFilter || ''}
-          onChange={(e) => onCategoryChange(e.target.value)}
-          className="text-xs bg-white border border-[#DCE4E3] rounded-lg px-2.5 py-1.5 text-[#172B3A] font-medium focus:outline-none focus:ring-2 focus:ring-[#087E8B] focus:border-[#087E8B] shadow-xs cursor-pointer"
-        >
-          <option value="">All Categories</option>
-          {categoryOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onChange={onCategoryChange}
+          className="w-48"
+          options={[
+            { value: '', label: 'All Categories' },
+            ...categoryOptions.map((opt) => ({
+              value: opt.value,
+              label: opt.label,
+              icon: <CategoryIcon category={opt.value} className="w-3.5 h-3.5 text-[#087E8B]" />,
+            })),
+          ]}
+        />
       )}
 
       {/* Reset Filters */}
       {hasActiveFilters && (
         <button
+          type="button"
           onClick={onReset}
           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#172B3A] hover:text-[#087E8B] bg-[#EFF3F1] hover:bg-[#DCEFF0] transition-colors"
           title="Reset all filters"

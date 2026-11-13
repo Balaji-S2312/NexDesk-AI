@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
     EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 30
+    EMAIL_VERIFICATION_OTP_EXPIRE_MINUTES: int = 10
+    EMAIL_VERIFICATION_OTP_MAX_ATTEMPTS: int = 5
+    EMAIL_VERIFICATION_OTP_COOLDOWN_SECONDS: int = 60
+    EMAIL_VERIFICATION_OTP_RATE_WINDOW_MINUTES: int = 15
+    EMAIL_VERIFICATION_OTP_MAX_PER_WINDOW: int = 5
     
     # CORS
     CORS_ORIGINS: Union[List[str], str] = ["http://localhost:5173", "http://127.0.0.1:5173"]

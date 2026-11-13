@@ -1,32 +1,60 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { verifyUserEmailApi } from '../services/api';
+import { sendVerificationOtpApi } from '../services/api';
+import { PENDING_VERIFY_EMAIL_KEY } from './Register';
 import { User, Key, Calendar, LogOut, CheckCircle2, Mail, ShieldAlert } from 'lucide-react';
 
 export const Profile: React.FC = () => {
   const { user, isAdmin, logout, refreshUser } = useAuth();
   const { showToast } = useToast();
-  const [verifying, setVerifying] = useState(false);
+  const navigate = useNavigate();
+  const [sendingOtp, setSendingOtp] = useState(false);
 
   const handleVerifyEmail = async () => {
-    setVerifying(true);
+    if (!user || sendingOtp) return;
+    setSendingOtp(true);
     try {
-      await verifyUserEmailApi();
-      if (refreshUser) await refreshUser();
+      sessionStorage.setItem(PENDING_VERIFY_EMAIL_KEY, user.email);
+    } catch {
+      // ignore storage errors
+    }
+    try {
+      const res = await sendVerificationOtpApi();
+      if (res.already_verified) {
+        if (refreshUser) await refreshUser();
+        showToast({
+          type: 'success',
+          title: 'Email already verified',
+          message: 'Your email address is verified and active for IT support tickets.',
+        });
+        return;
+      }
       showToast({
         type: 'success',
-        title: 'Email verified',
-        message: 'Your email address is now marked as verified for ticket notifications.',
+        title: 'Verification code sent',
+        message: `Enter the 6-digit OTP sent to ${user.email}.`,
       });
+      navigate('/verify-email', { state: { email: user.email, otpJustSent: true } });
     } catch (err: unknown) {
+      const apiErr = err as Error & { status?: number };
+      if (apiErr?.status === 429) {
+        showToast({
+          type: 'info',
+          title: 'Check your inbox',
+          message: 'A 6-digit verification code was already sent recently. Enter it below.',
+        });
+        navigate('/verify-email', { state: { email: user.email, otpJustSent: false } });
+        return;
+      }
       showToast({
         type: 'error',
-        title: 'Verification failed',
-        message: err instanceof Error ? err.message : 'Unable to verify email',
+        title: 'Unable to send OTP',
+        message: err instanceof Error ? err.message : 'Unable to dispatch verification code',
       });
     } finally {
-      setVerifying(false);
+      setSendingOtp(false);
     }
   };
 
@@ -92,10 +120,10 @@ export const Profile: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleVerifyEmail}
-                      disabled={verifying}
-                      className="px-2 py-0.5 rounded-md bg-[#087E8B] hover:bg-[#075C66] text-white text-[10px] font-semibold disabled:opacity-60 transition-colors"
+                      disabled={sendingOtp}
+                      className="px-2.5 py-0.5 rounded-md bg-[#087E8B] hover:bg-[#075C66] text-white text-[10px] font-semibold disabled:opacity-60 transition-colors"
                     >
-                      {verifying ? 'Verifying...' : 'Verify Email'}
+                      {sendingOtp ? 'Sending OTP...' : 'Verify Email'}
                     </button>
                   </>
                 )}

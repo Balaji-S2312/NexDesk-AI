@@ -187,13 +187,13 @@ export const AdminDashboard: React.FC = () => {
       {/* Top Banner & Date Filter */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2 text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
+          <div className="flex items-center space-x-2 text-xs font-semibold text-[#087E8B] uppercase tracking-wider mb-1">
             <Activity className="w-3.5 h-3.5" />
             <span>ITSM Command Center &amp; Service Analytics</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Enterprise Service Analytics</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Real-time SQLite analytics, SLA compliance calculation, volume trends, and team workload telemetry.
+          <h1 className="text-2xl font-bold text-[#172B3A] tracking-tight">Enterprise Service Analytics</h1>
+          <p className="text-xs text-[#526773] mt-1">
+            Real-time incident analytics, SLA compliance calculation, volume trends, and team workload telemetry.
           </p>
         </div>
 

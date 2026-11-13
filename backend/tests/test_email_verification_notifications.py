@@ -69,7 +69,7 @@ def test_registration_creates_unverified_account_and_dispatches_token():
             EmailDeliveryLog.event_type == "email_verification",
         ).first()
         assert log_rec is not None
-        assert "[NexDesk AI] Verify Your" in log_rec.subject
+        assert "Verify your NexDesk AI account" in log_rec.subject
     finally:
         db.close()
 

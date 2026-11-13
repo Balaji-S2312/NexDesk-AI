@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Sparkles,
   Bot,
@@ -9,6 +10,8 @@ import {
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { PriorityBadge } from './PriorityBadge';
+import { AdaptiveSelect } from './AdaptiveSelect';
+import { CategoryIcon } from './CategoryIcon';
 import { createTicketApi, classifyIncidentApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
@@ -227,12 +230,14 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               <p className="text-[11px] opacity-90">
                 In accordance with IT security policy, your employee account ({user?.email}) must be verified before submitting IT support tickets.
               </p>
-              <a
-                href={`/verify-email?email=${encodeURIComponent(user?.email || '')}`}
+              <Link
+                to="/verify-email"
+                state={{ email: user?.email || '' }}
+                onClick={onClose}
                 className="inline-block text-[11px] font-semibold text-[#087E8B] underline hover:no-underline pt-0.5"
               >
-                Verify your email now &rarr;
-              </a>
+                Verify your email with 6-digit OTP &rarr;
+              </Link>
             </div>
           </div>
         )}
@@ -395,20 +400,19 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[#172B3A] mb-1">
                 Confirm Category
               </label>
-              <select
+              <AdaptiveSelect
+                label="Category"
                 value={category}
-                onChange={(e) => setCategory(e.target.value as TicketCategoryValue)}
-                className={inputCls}
-              >
-                {CATEGORY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setCategory(val as TicketCategoryValue)}
+                options={CATEGORY_OPTIONS.map((o) => ({
+                  value: o.value,
+                  label: o.label,
+                  icon: <CategoryIcon category={o.value} className="w-4 h-4 text-[#087E8B]" />,
+                }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -427,32 +431,22 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Impact</label>
-              <select
+              <label className="block text-xs font-semibold text-[#172B3A] mb-1">Impact</label>
+              <AdaptiveSelect
+                label="Impact"
                 value={impact}
-                onChange={(e) => setImpact(e.target.value as ImpactLevel)}
-                className={inputCls}
-              >
-                {IMPACT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setImpact(val as ImpactLevel)}
+                options={IMPACT_OPTIONS}
+              />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Urgency</label>
-              <select
+              <label className="block text-xs font-semibold text-[#172B3A] mb-1">Urgency</label>
+              <AdaptiveSelect
+                label="Urgency"
                 value={urgency}
-                onChange={(e) => setUrgency(e.target.value as UrgencyLevel)}
-                className={inputCls}
-              >
-                {URGENCY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setUrgency(val as UrgencyLevel)}
+                options={URGENCY_OPTIONS}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">

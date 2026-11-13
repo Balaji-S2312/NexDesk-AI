@@ -1,16 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-
-export type ThemePreference = 'light' | 'dark' | 'night' | 'auto';
-export type ResolvedTheme = 'light' | 'dark' | 'night';
-
-interface ThemeContextType {
-  theme: ThemePreference;
-  resolvedTheme: ResolvedTheme;
-  setTheme: (theme: ThemePreference) => void;
-  isAuto: boolean;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+import React, { useEffect, useState } from 'react';
+import { ThemeContext, ThemePreference, ResolvedTheme } from './themeContextInstance';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme] = useState<ThemePreference>('light');
@@ -23,7 +12,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.setAttribute('data-theme', 'light');
     try {
       localStorage.setItem('nexdesk_theme_preference', 'light');
-    } catch {}
+    } catch {
+      // ignore storage errors
+    }
   }, []);
 
   const setTheme = () => {
@@ -42,12 +33,4 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {children}
     </ThemeContext.Provider>
   );
-};
-
-export const useTheme = (): ThemeContextType => {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-  return context;
 };

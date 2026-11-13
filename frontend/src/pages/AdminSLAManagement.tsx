@@ -17,6 +17,7 @@ import {
 import { Modal } from '../components/Modal';
 import { PriorityBadge } from '../components/PriorityBadge';
 import { StatusBadge } from '../components/StatusBadge';
+import { AdaptiveSelect } from '../components/AdaptiveSelect';
 import {
   getSLAOverviewApi,
   listSLAPoliciesApi,
@@ -505,18 +506,19 @@ export const AdminSLAManagement: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Target Priority</label>
-              <select
-                value={formPriority}
+              <label className="block font-semibold text-[#172B3A] mb-1">Target Priority</label>
+              <AdaptiveSelect
+                label="Target Priority"
                 disabled={Boolean(editingPolicy)}
-                onChange={(e) => setFormPriority(e.target.value as 'critical' | 'high' | 'medium' | 'low')}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white disabled:bg-slate-100"
-              >
-                <option value="critical">Critical (P1)</option>
-                <option value="high">High (P2)</option>
-                <option value="medium">Medium (P3)</option>
-                <option value="low">Low (P4)</option>
-              </select>
+                value={formPriority}
+                onChange={(val) => setFormPriority(val as 'critical' | 'high' | 'medium' | 'low')}
+                options={[
+                  { value: 'critical', label: 'Critical (P1)' },
+                  { value: 'high', label: 'High (P2)' },
+                  { value: 'medium', label: 'Medium (P3)' },
+                  { value: 'low', label: 'Low (P4)' },
+                ]}
+              />
             </div>
 
             <div>

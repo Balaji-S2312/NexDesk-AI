@@ -2,24 +2,31 @@ from datetime import datetime, timezone
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.user import (
+    OTPDispatchResponse,
     ResendVerificationRequest,
+    SendOTPRequest,
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
     UserResponse,
     VerificationStatusResponse,
     VerifyEmailRequest,
+    VerifyOTPRequest,
 )
 from app.core.security import get_password_hash, verify_password, create_access_token
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, get_optional_current_user, require_admin
 from app.services.verification_service import (
-    create_verification_token,
-    send_verification_email,
+    OTP_EXPIRE_MINUTES,
+    RESEND_COOLDOWN_SECONDS,
+    issue_and_send_verification,
+    request_verification_otp,
+    verify_email_otp,
     verify_email_token,
     resend_verification_email as process_resend_verification,
 )
@@ -37,7 +44,7 @@ def register(
     """
     Register a new employee user account.
     Role escalation is strictly prevented: all registrations are assigned the 'employee' role.
-    Generates a secure verification token and dispatches an activation email.
+    Generates a secure 6-digit OTP + backup activation token and dispatches an email.
     """
     normalized_email = user_in.email.strip().lower()
     
@@ -59,15 +66,21 @@ def register(
     )
     
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email address already exists.",
+        )
     db.refresh(new_user)
 
-    # Generate token & dispatch email verification link
+    # Generate 6-digit OTP & backup verification link, then dispatch email
     try:
-        raw_token = create_verification_token(db, new_user)
-        send_verification_email(db, new_user, raw_token)
+        issue_and_send_verification(db, new_user)
     except Exception as exc:
-        logger.error("Failed to dispatch registration verification email: %s", exc)
+        logger.error("Failed to dispatch registration verification email for user_id=%s: %s", new_user.id, exc)
 
     return new_user
 
@@ -115,16 +128,66 @@ def get_current_user_profile(
     return current_user
 
 
+@router.post("/send-otp", response_model=OTPDispatchResponse, status_code=status.HTTP_200_OK)
+def send_verification_otp_endpoint(
+    payload: Optional[SendOTPRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """
+    Issue a new 6-digit verification OTP email (10-minute expiration, 60-second cooldown).
+    Uses the authenticated user when signed in, or falls back to payload email safely without enumeration.
+    """
+    email = payload.email if payload else None
+    if current_user is None and not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registered email address is required.",
+        )
+
+    dispatched = request_verification_otp(db, current_user=current_user, email=email)
+    if current_user is not None and not dispatched:
+        return OTPDispatchResponse(
+            message="Your email address is already verified.",
+            cooldown_seconds=0,
+            expires_in_seconds=0,
+            already_verified=True,
+        )
+
+    return OTPDispatchResponse(
+        message="If this email is registered and unverified, a 6-digit verification code has been sent.",
+        cooldown_seconds=RESEND_COOLDOWN_SECONDS,
+        expires_in_seconds=OTP_EXPIRE_MINUTES * 60,
+        already_verified=False,
+    )
+
+
+@router.post("/verify-otp", response_model=UserResponse)
+def verify_otp_endpoint(
+    payload: VerifyOTPRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """
+    Verify an employee email address using a cryptographically hashed single-use 6-digit OTP.
+    """
+    return verify_email_otp(
+        db,
+        otp=payload.otp,
+        current_user=current_user,
+        email=payload.email,
+    )
+
+
 @router.post("/verify-email", response_model=UserResponse)
 def verify_email_endpoint(
     payload: Optional[VerifyEmailRequest] = None,
     token: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(lambda: None),
 ):
     """
-    Verify employee email using single-use cryptographic token.
-    Accepts token via JSON payload or query parameter, or falls back to current authenticated user.
+    Verify employee email using single-use cryptographic link token.
+    Accepts token via JSON payload or query parameter.
     """
     resolved_token = None
     if payload and payload.token:
@@ -136,24 +199,27 @@ def verify_email_endpoint(
         verified_user = verify_email_token(db, resolved_token)
         return verified_user
 
-    # Fallback: if caller passed Bearer token without query token
-    # (used for backward compatibility in internal session verification)
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="Verification token is required.",
     )
 
 
-@router.post("/resend-verification", status_code=status.HTTP_200_OK)
+@router.post("/resend-verification", response_model=OTPDispatchResponse, status_code=status.HTTP_200_OK)
 def resend_verification_endpoint(
     payload: ResendVerificationRequest,
     db: Session = Depends(get_db),
 ):
     """
-    Resend verification email to registered employee address with rate limiting.
+    Resend 6-digit OTP and verification link to registered employee address with rate limiting.
     """
     process_resend_verification(db, payload.email)
-    return {"message": "Verification link has been sent if the email is registered."}
+    return OTPDispatchResponse(
+        message="If this email is registered and unverified, a 6-digit verification code has been sent.",
+        cooldown_seconds=RESEND_COOLDOWN_SECONDS,
+        expires_in_seconds=OTP_EXPIRE_MINUTES * 60,
+        already_verified=False,
+    )
 
 
 @router.get("/verification-status", response_model=VerificationStatusResponse)

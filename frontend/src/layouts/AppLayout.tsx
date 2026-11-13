@@ -92,10 +92,11 @@ export const AppLayout = () => {
               </span>
             </div>
             <Link
-              to={`/verify-email?email=${encodeURIComponent(user.email)}`}
-              className="inline-flex items-center gap-1 font-semibold underline hover:no-underline text-amber-700 ml-4 shrink-0"
+              to="/verify-email"
+              state={{ email: user.email }}
+              className="inline-flex items-center gap-1 font-semibold underline hover:no-underline text-amber-800 ml-4 shrink-0"
             >
-              Verify / Resend link
+              Verify Email (6-Digit OTP)
             </Link>
           </div>
         )}

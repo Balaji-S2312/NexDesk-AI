@@ -67,7 +67,9 @@ api.interceptors.response.use(
     } else if (error.request) {
       message = 'Unable to connect to NexDesk backend server. Please verify the backend service is running on port 8000.';
     }
-    return Promise.reject(new Error(message));
+    const apiError = new Error(message) as Error & { status?: number };
+    apiError.status = error.response?.status;
+    return Promise.reject(apiError);
   }
 );
 
@@ -385,8 +387,21 @@ export const getNotificationConfigApi = async (): Promise<NotificationConfigStat
   return response.data;
 };
 
-export const verifyUserEmailApi = async (): Promise<User> => {
-  const response = await api.post<User>('/auth/verify-email');
+export interface OTPDispatchResponse {
+  message: string;
+  cooldown_seconds: number;
+  expires_in_seconds: number;
+  already_verified: boolean;
+}
+
+export const sendVerificationOtpApi = async (email?: string): Promise<OTPDispatchResponse> => {
+  const response = await api.post<OTPDispatchResponse>('/auth/send-otp', email ? { email } : {});
+  return response.data;
+};
+
+export const verifyEmailOtpApi = async (otp: string, email?: string): Promise<User> => {
+  const payload = email ? { otp, email } : { otp };
+  const response = await api.post<User>('/auth/verify-otp', payload);
   return response.data;
 };
 

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Flame, Clock, Check, ChevronDown } from 'lucide-react';
-import { useTheme, ThemePreference } from '../contexts/ThemeContext';
+import { useTheme } from '../hooks/useTheme';
+import { ThemePreference } from '../contexts/themeContextInstance';
 
 const THEME_OPTIONS: Array<{
   id: ThemePreference;

@@ -4,19 +4,20 @@ import { useAuth } from '../hooks/useAuth';
 import { Cpu, Lock, Mail, AlertCircle, ArrowRight, ShieldCheck, UserCheck } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-
   const { login, error, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = location.state?.from?.pathname || '/';
+  const [email, setEmail] = useState(() => (location.state as { email?: string } | null)?.email || '');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setLocalError(null);
     clearError();
 
@@ -27,13 +28,15 @@ export const Login: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await login({ email, password });
+      await login({ email: email.trim().toLowerCase(), password });
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setLocalError(err.message);
+      const apiErr = err as Error & { status?: number };
+      const msg = apiErr instanceof Error ? apiErr.message : '';
+      if (apiErr?.status === 401 || msg.toLowerCase().includes('invalid email or password')) {
+        setLocalError('Invalid email or password. Please check your credentials and try again.');
       } else {
-        setLocalError('Authentication failed. Please verify your credentials.');
+        setLocalError(msg || 'Invalid email or password. Please check your credentials and try again.');
       }
     } finally {
       setSubmitting(false);
@@ -144,11 +147,12 @@ export const Login: React.FC = () => {
           </div>
           )}
 
-          <div className="mt-6 text-center text-xs text-[#526773]">
-            Don't have an account?{' '}
+          <div className="mt-6 text-center text-xs text-[#526773] leading-relaxed">
+            Already registered? Sign in using your existing email and password. New here?{' '}
             <Link to="/register" className="font-semibold text-[#087E8B] hover:text-[#075C66]">
-              Register here
+              Create an account
             </Link>
+            .
           </div>
         </div>
       </div>

@@ -8,6 +8,7 @@ from app.models.audit_log import AuditLog
 from app.models.agent import AgentEscalation, AgentPendingAction, AgentToolLog
 from app.models.notification import EmailDeliveryLog, Notification
 from app.models.email_verification import EmailVerificationToken
+from app.models.email_verification_otp import EmailVerificationOTP
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "Notification",
     "EmailDeliveryLog",
     "EmailVerificationToken",
+    "EmailVerificationOTP",
 ]
