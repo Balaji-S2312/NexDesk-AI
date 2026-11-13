@@ -36,7 +36,7 @@ Tracks outbound email reliability (`recipient_user_id`, `recipient_email`, `reci
 
 | Event | Employee Notification & Email | Administrator Notification & Email |
 | :--- | :--- | :--- |
-| **Event A: Ticket Submitted** | In-app `ticket_submitted` confirmation + background email to employee's DB email | In-app `new_incident_alert` + (`high_priority_alert` for High/Critical) + email to `ADMIN_NOTIFICATION_EMAIL` (`bb7578167@gmail.com`) |
+| **Event A: Ticket Submitted** | In-app `ticket_submitted` confirmation + background email to employee's DB email | In-app `new_incident_alert` + (`high_priority_alert` for High/Critical) + email to `ADMIN_NOTIFICATION_EMAIL` (`balaji.poet2312s@gmail.com`) |
 | **Event B: Ticket Assigned** | In-app `ticket_assigned` + email showing assigned support group | In-app routing confirmation + Ticket History + email to `ADMIN_NOTIFICATION_EMAIL` |
 | **Event C: Status / Priority Updated** | In-app `ticket_status_updated`, `ticket_priority_updated`, or `ticket_closed` + email | In-app alerts for priority escalations (`high_priority_alert`), closures (`ticket_closed`), or `pending`/`open` attention |
 | **Event D: Comments & Replies** | In-app `admin_comment` + background email when an Admin comments | In-app `employee_reply` + background email when the Employee replies |
@@ -62,8 +62,8 @@ SMTP_PASSWORD=your-smtp-app-password
 SMTP_FROM_EMAIL=noreply@nexdesk.ai
 SMTP_FROM_NAME=NexDesk AI
 SMTP_USE_TLS=true
-ADMIN_NOTIFICATION_EMAIL=bb7578167@gmail.com
-ADMIN_EMAIL=bb7578167@gmail.com
+ADMIN_NOTIFICATION_EMAIL=balaji.poet2312s@gmail.com
+ADMIN_EMAIL=balaji.poet2312s@gmail.com
 FRONTEND_BASE_URL=http://localhost:5173
 ```
 

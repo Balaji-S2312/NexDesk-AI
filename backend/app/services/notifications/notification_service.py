@@ -7,14 +7,16 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from app.models.notification import Notification
+from app.models.notification import EmailDeliveryLog, Notification
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.services.notifications.email_service import (
     CATEGORY_LABELS,
     STATUS_LABELS,
+    send_sla_breach_email,
     send_ticket_assignment_email,
     send_ticket_comment_email,
+    send_ticket_escalation_email,
     send_ticket_priority_email,
     send_ticket_resolution_email,
     send_ticket_status_email,
@@ -593,6 +595,8 @@ def notify_ticket_escalated(
     summary: str,
     actor: Optional[User] = None,
     event_token: Optional[str] = None,
+    send_emails: bool = True,
+    background_tasks: Any = None,
 ) -> List[Notification]:
     """Notify administrators and requester when a ticket is escalated to human IT support."""
     created: List[Notification] = []
@@ -630,6 +634,16 @@ def notify_ticket_escalated(
             metadata={"ticket_number": ticket_num, "assigned_group": group_name},
         )
         created.append(adm_notif)
+
+    if send_emails:
+        ticket_id_val = ticket.id
+
+        def _bg_send(session: Session) -> None:
+            t = session.query(Ticket).options(joinedload(Ticket.requester), joinedload(Ticket.group)).filter(Ticket.id == ticket_id_val).first()
+            if t:
+                send_ticket_escalation_email(session, t, group_name, summary, actor_name, token)
+
+        _schedule_email_task(db, background_tasks, _bg_send)
 
     return created
 
@@ -695,8 +709,13 @@ def notify_ticket_comment(
     return created
 
 
-def sync_sla_notifications(db: Session) -> List[Notification]:
-    """Idempotently emit Admin notifications for active tickets approaching or breaching SLA."""
+def sync_sla_notifications(
+    db: Session,
+    *,
+    send_emails: bool = True,
+    background_tasks: Any = None,
+) -> List[Notification]:
+    """Idempotently emit Admin alerts and email notifications for active SLA breaches/warnings."""
     admins = db.query(User).filter(User.role == "admin").all()
     if not admins:
         return []
@@ -737,6 +756,22 @@ def sync_sla_notifications(db: Session) -> List[Notification]:
                         metadata={"ticket_number": ticket_num, "sla_status": sla["sla_status"]},
                     )
                 )
+            if send_emails:
+                already_emailed = (
+                    db.query(EmailDeliveryLog.id)
+                    .filter(EmailDeliveryLog.event_key == f"email:sla_breached:{ticket.id}:admin")
+                    .first()
+                )
+                if not already_emailed:
+                    ticket_id_val = ticket.id
+                    sla_status_val = str(sla["sla_status"])
+
+                    def _bg_sla(session: Session, tid: int = ticket_id_val, s_status: str = sla_status_val) -> None:
+                        t = session.query(Ticket).options(joinedload(Ticket.requester), joinedload(Ticket.group)).filter(Ticket.id == tid).first()
+                        if t:
+                            send_sla_breach_email(session, t, s_status)
+
+                    _schedule_email_task(db, background_tasks, _bg_sla)
         elif is_near:
             for admin in admins:
                 created.append(

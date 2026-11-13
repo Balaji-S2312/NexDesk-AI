@@ -49,9 +49,9 @@ services:
       - key: SMTP_FROM_NAME
         value: NexDesk AI – IT Service Desk
       - key: ADMIN_NOTIFICATION_EMAIL
-        value: bb7578167@gmail.com
+        value: balaji.poet2312s@gmail.com
       - key: ADMIN_EMAIL
-        value: bb7578167@gmail.com
+        value: balaji.poet2312s@gmail.com
       - key: RESEND_API_KEY
         sync: false
       - key: BREVO_API_KEY

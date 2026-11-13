@@ -69,7 +69,7 @@ def test_employee_and_admin_notifications_and_dynamic_recipient_routing(monkeypa
     monkeypatch.setattr(settings, "SMTP_USERNAME", "smtp_user_secret")
     monkeypatch.setattr(settings, "SMTP_PASSWORD", "super_secret_pw")
     monkeypatch.setattr(settings, "SMTP_FROM_EMAIL", "noreply@nexdesk.ai")
-    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "bb7578167@gmail.com")
+    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "balaji.poet2312s@gmail.com")
 
     emp_a_headers, emp_a_user, emp_a_email = _register_and_login("Employee Alpha")
     emp_b_headers, emp_b_user, emp_b_email = _register_and_login("Employee Beta")
@@ -129,13 +129,13 @@ def test_employee_and_admin_notifications_and_dynamic_recipient_routing(monkeypa
         for n in admin_notifs["items"]
     )
 
-    # Verify outbound emails targeted Employee A email, Employee B email, and fixed Admin email bb7578167@gmail.com
+    # Verify outbound emails targeted Employee A email, Employee B email, and fixed Admin email balaji.poet2312s@gmail.com
     recipients_for_a = [m["to"] for m in sent_messages if ticket_a["ticket_number"] in m["subject"]]
     recipients_for_b = [m["to"] for m in sent_messages if ticket_b["ticket_number"] in m["subject"]]
     assert emp_a_email in recipients_for_a
-    assert "bb7578167@gmail.com" in recipients_for_a
+    assert "balaji.poet2312s@gmail.com" in recipients_for_a
     assert emp_b_email in recipients_for_b
-    assert "bb7578167@gmail.com" in recipients_for_b
+    assert "balaji.poet2312s@gmail.com" in recipients_for_b
 
     # Verify EmailDeliveryLog tracks recipient_verified accurately (A verified=True, B verified=False)
     a_logs = client.get(f"/api/notifications/email-history?ticket_id={ticket_a['id']}", headers=emp_a_headers).json()
@@ -158,7 +158,7 @@ def test_employee_and_admin_notifications_and_dynamic_recipient_routing(monkeypa
 
     # Admin config returns sanitized admin notification email without exposing secrets
     cfg = client.get("/api/notifications/config", headers=admin_headers).json()
-    assert cfg["admin_notification_email"] == "bb7578167@gmail.com"
+    assert cfg["admin_notification_email"] == "balaji.poet2312s@gmail.com"
     assert "smtp_password" not in cfg
     assert "super_secret_pw" not in str(cfg)
 
@@ -275,7 +275,7 @@ def test_e2e_13_step_acceptance_scenario(monkeypatch):
     """Verify full 13-step employee submission -> admin triage/assign/status/resolve -> employee notifications workflow."""
     monkeypatch.setattr(settings, "SMTP_HOST", "smtp.e2e.local")
     monkeypatch.setattr(settings, "SMTP_PASSWORD", "mock_password")
-    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "bb7578167@gmail.com")
+    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "balaji.poet2312s@gmail.com")
 
     emp_headers, emp_user, emp_email = _register_and_login("Acceptance Employee")
     admin_headers, _ = _login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)
@@ -388,12 +388,12 @@ def test_e2e_13_step_acceptance_scenario(monkeypatch):
 
         # Confirm emails sent to employee email and admin email across lifecycle
         assert any(to == emp_email and "Resolved" in subj for to, subj in dispatched)
-        assert any(to == "bb7578167@gmail.com" and "Resolved" in subj for to, subj in dispatched)
+        assert any(to == "balaji.poet2312s@gmail.com" and "Resolved" in subj for to, subj in dispatched)
 
 
 def test_registration_comments_priority_closure_and_sla_notifications(monkeypatch):
-    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "bb7578167@gmail.com")
-    monkeypatch.setattr(settings, "ADMIN_EMAIL", "bb7578167@gmail.com")
+    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "balaji.poet2312s@gmail.com")
+    monkeypatch.setattr(settings, "ADMIN_EMAIL", "balaji.poet2312s@gmail.com")
     monkeypatch.setattr(settings, "SMTP_PASSWORD", "")
 
     admin_headers, _ = _login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)
@@ -529,6 +529,46 @@ def test_registration_comments_priority_closure_and_sla_notifications(monkeypatc
     ]
     assert len(second_breach_notifs) == len(first_breach_notifs)
 
+    # Verify SLA breach and AI escalation also create email logs targeting fixed admin balaji.poet2312s@gmail.com
+    db = TestingSessionLocal()
+    try:
+        sla_logs = (
+            db.query(EmailDeliveryLog)
+            .filter(EmailDeliveryLog.ticket_id == sla_tid, EmailDeliveryLog.event_type == "sla_breached")
+            .all()
+        )
+        assert len(sla_logs) == 1
+        assert sla_logs[0].recipient_email == "balaji.poet2312s@gmail.com"
+
+        from app.services.notifications.notification_service import notify_ticket_escalated
+
+        sla_ticket = db.query(Ticket).filter(Ticket.id == sla_tid).first()
+        assert sla_ticket is not None
+        notify_ticket_escalated(
+            db,
+            sla_ticket,
+            "Network Support",
+            "Escalating critical gateway outage.",
+            actor=None,
+            event_token=f"{sla_tid}:esc_test",
+        )
+        esc_logs = (
+            db.query(EmailDeliveryLog)
+            .filter(EmailDeliveryLog.ticket_id == sla_tid, EmailDeliveryLog.event_type == "ticket_escalated_admin")
+            .all()
+        )
+        assert len(esc_logs) == 1
+        assert esc_logs[0].recipient_email == "balaji.poet2312s@gmail.com"
+        emp_esc_logs = (
+            db.query(EmailDeliveryLog)
+            .filter(EmailDeliveryLog.ticket_id == sla_tid, EmailDeliveryLog.event_type == "ticket_escalated")
+            .all()
+        )
+        assert len(emp_esc_logs) == 1
+        assert emp_esc_logs[0].recipient_email == emp_email
+    finally:
+        db.close()
+
 
 def test_production_smtp_unreachable_fails_fast_and_does_not_block_ticket_creation(monkeypatch):
     import errno
@@ -540,7 +580,7 @@ def test_production_smtp_unreachable_fails_fast_and_does_not_block_ticket_creati
     monkeypatch.setattr(settings, "SMTP_PORT", 587)
     monkeypatch.setattr(settings, "SMTP_USERNAME", "sender@nexdesk.ai")
     monkeypatch.setattr(settings, "SMTP_PASSWORD", "app-password")
-    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "bb7578167@gmail.com")
+    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "balaji.poet2312s@gmail.com")
 
     emp_headers, _, emp_email = _register_and_login("Fast Fail Employee")
 

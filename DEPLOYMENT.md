@@ -86,8 +86,8 @@ SMTP_PASSWORD=<your-16-char-gmail-app-password>
 SMTP_FROM_EMAIL=balaji.poet2312s@gmail.com
 SMTP_FROM_NAME=NexDesk AI – IT Service Desk
 SMTP_USE_TLS=true
-ADMIN_NOTIFICATION_EMAIL=bb7578167@gmail.com
-ADMIN_EMAIL=bb7578167@gmail.com
+ADMIN_NOTIFICATION_EMAIL=balaji.poet2312s@gmail.com
+ADMIN_EMAIL=balaji.poet2312s@gmail.com
 
 # Recommended for Render Free Tier (HTTPS Port 443 Email API; takes priority over SMTP)
 RESEND_API_KEY=<optional-resend-api-key>

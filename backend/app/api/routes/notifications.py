@@ -1,7 +1,7 @@
 """Notification & Email Delivery History API routes (Module 9A)."""
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
@@ -39,6 +39,7 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 @router.get("", response_model=NotificationListOut)
 def list_notifications(
+    background_tasks: BackgroundTasks,
     unread_only: bool = Query(False),
     ticket_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(50, ge=1, le=200),
@@ -49,7 +50,7 @@ def list_notifications(
     """Return notifications belonging exclusively to the authenticated user."""
     if current_user.role == "admin" and ticket_id is None:
         try:
-            sync_sla_notifications(db)
+            sync_sla_notifications(db, background_tasks=background_tasks)
         except Exception:
             pass
 
@@ -70,13 +71,14 @@ def list_notifications(
 
 @router.get("/unread-count", response_model=UnreadCountOut)
 def get_notifications_unread_count(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Return unread notification count for the authenticated user."""
     if current_user.role == "admin":
         try:
-            sync_sla_notifications(db)
+            sync_sla_notifications(db, background_tasks=background_tasks)
         except Exception:
             pass
     return {"unread_count": get_unread_count(db, current_user)}

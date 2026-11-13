@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     SMTP_STARTTLS: bool = True
     SMTP_MAX_RETRIES: int = 2
     SMTP_TIMEOUT_SECONDS: int = 10
-    ADMIN_NOTIFICATION_EMAIL: str = "bb7578167@gmail.com"
-    ADMIN_EMAIL: str = "bb7578167@gmail.com"
+    ADMIN_NOTIFICATION_EMAIL: str = "balaji.poet2312s@gmail.com"
+    ADMIN_EMAIL: str = "balaji.poet2312s@gmail.com"
     ADMIN_SEED_EMAIL: str = ""
     ADMIN_SEED_PASSWORD: str = ""
     SEED_DEMO_ACCOUNTS: bool = True

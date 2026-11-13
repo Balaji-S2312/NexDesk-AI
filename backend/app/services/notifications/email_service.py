@@ -104,12 +104,22 @@ def is_smtp_configured() -> bool:
 
 
 def get_admin_notification_email() -> str:
-    """Resolve centralized administrator notification email from Settings."""
+    """Resolve centralized fixed administrator notification email from Settings."""
     for candidate in (settings.ADMIN_NOTIFICATION_EMAIL, settings.ADMIN_EMAIL):
         cleaned = (candidate or "").strip()
         if is_valid_email(cleaned):
             return cleaned
-    return "admin@nexdesk.ai"
+    return "balaji.poet2312s@gmail.com"
+
+
+def get_employee_notification_recipient(db: Session, ticket: Ticket) -> Optional[User]:
+    """Centralized lookup resolving the ticket-owning employee dynamically from the DB."""
+    if ticket.requester_id is None:
+        return None
+    owner = db.query(User).filter(User.id == ticket.requester_id).first()
+    if owner and is_valid_email(owner.email):
+        return owner
+    return None
 
 
 def _sanitize_smtp_error(err: Exception) -> str:
@@ -494,7 +504,7 @@ def send_ticket_assignment_email(
     assigned_group: str,
     event_suffix: str,
 ) -> None:
-    requester = ticket.requester or db.query(User).filter(User.id == ticket.requester_id).first()
+    requester = get_employee_notification_recipient(db, ticket)
     if not requester:
         return
     ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
@@ -562,7 +572,7 @@ def send_ticket_priority_email(
     actor_name: str,
     event_suffix: str,
 ) -> None:
-    requester = ticket.requester or db.query(User).filter(User.id == ticket.requester_id).first()
+    requester = get_employee_notification_recipient(db, ticket)
     if not requester:
         return
     ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
@@ -601,6 +611,35 @@ def send_ticket_priority_email(
         recipient_verified=bool(getattr(requester, "email_verified", False)),
     )
 
+    admin_email = get_admin_notification_email()
+    admin_tpl = render_ticket_field_update_email(
+        employee_name="NexDesk Administrator",
+        ticket_id=ticket.id,
+        ticket_number=ticket_num,
+        field_name="Priority Escalation",
+        old_value=old_p_label,
+        new_value=new_p_label,
+        assigned_group=assigned_grp,
+        updated_by_name=actor_name,
+        current_status=status_label,
+        resolution_notes=None,
+        updated_at=updated_str,
+        ticket_url=_ticket_url(ticket),
+    )
+    send_email(
+        db,
+        recipient_email=admin_email,
+        subject=f"[NexDesk AI] Priority Updated ({new_p_label}): {ticket_num}",
+        html_body=admin_tpl["html_body"],
+        text_body=admin_tpl["text_body"],
+        event_type="ticket_priority_updated_admin",
+        event_key=f"email:ticket_priority:{event_suffix}:admin",
+        ticket_id=ticket.id,
+        ticket_number=ticket_num,
+        recipient_user_id=None,
+        recipient_verified=True,
+    )
+
 
 
 
@@ -613,7 +652,7 @@ def send_ticket_status_email(
 ) -> None:
     if new_status not in MEANINGFUL_STATUS_EMAILS:
         return
-    requester = ticket.requester or db.query(User).filter(User.id == ticket.requester_id).first()
+    requester = get_employee_notification_recipient(db, ticket)
     if not requester:
         return
     ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
@@ -645,6 +684,32 @@ def send_ticket_status_email(
         recipient_verified=bool(getattr(requester, "email_verified", False)),
     )
 
+    if new_status in ("closed", "pending", "open"):
+        admin_email = get_admin_notification_email()
+        admin_tpl = render_ticket_status_email(
+            ticket_number=ticket_num,
+            title=ticket.title,
+            old_status_label=old_label,
+            new_status_label=new_label,
+            priority_label=priority_label,
+            ticket_url=_ticket_url(ticket),
+            recipient_name="NexDesk Administrator",
+            is_verified=True,
+        )
+        send_email(
+            db,
+            recipient_email=admin_email,
+            subject=f"[NexDesk AI] Ticket {ticket_num} Status Alert ({new_label})",
+            html_body=admin_tpl["html"],
+            text_body=admin_tpl["text"],
+            event_type="ticket_status_updated_admin",
+            event_key=f"email:ticket_status:{event_suffix}:admin",
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            recipient_user_id=None,
+            recipient_verified=True,
+        )
+
 
 def send_ticket_resolution_email(
     db: Session,
@@ -652,7 +717,7 @@ def send_ticket_resolution_email(
     resolution_notes: str,
     event_suffix: str,
 ) -> None:
-    requester = ticket.requester or db.query(User).filter(User.id == ticket.requester_id).first()
+    requester = get_employee_notification_recipient(db, ticket)
     if not requester:
         return
     ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
@@ -723,7 +788,7 @@ def send_ticket_comment_email(
     author: User,
     comment_id: int,
 ) -> None:
-    requester = ticket.requester or db.query(User).filter(User.id == ticket.requester_id).first()
+    requester = get_employee_notification_recipient(db, ticket)
     if not requester:
         return
     ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
@@ -791,6 +856,123 @@ def send_ticket_comment_email(
             recipient_user_id=None,
             recipient_verified=True,
         )
+
+
+def send_ticket_escalation_email(
+    db: Session,
+    ticket: Ticket,
+    group_name: str,
+    summary: str,
+    actor_name: str,
+    event_suffix: str,
+) -> None:
+    requester = get_employee_notification_recipient(db, ticket)
+    ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
+    status_label = STATUS_LABELS.get(ticket.status, ticket.status.title())
+    updated_str = _utc_now().strftime("%Y-%m-%d %H:%M UTC")
+    url = _ticket_url(ticket)
+
+    from app.services.email_templates import render_ticket_field_update_email
+
+    admin_email = get_admin_notification_email()
+    admin_tpl = render_ticket_field_update_email(
+        employee_name="NexDesk Administrator",
+        ticket_id=ticket.id,
+        ticket_number=ticket_num,
+        field_name="Ticket Escalation",
+        old_value=f"Requester: {requester.name if requester else 'Employee'}",
+        new_value=f"Escalated to {group_name} — {(summary or '')[:220]}",
+        assigned_group=group_name,
+        updated_by_name=actor_name,
+        current_status=status_label,
+        resolution_notes=None,
+        updated_at=updated_str,
+        ticket_url=url,
+    )
+    send_email(
+        db,
+        recipient_email=admin_email,
+        subject=f"[NexDesk AI] Escalation Alert ({group_name}): {ticket_num}",
+        html_body=admin_tpl["html_body"],
+        text_body=admin_tpl["text_body"],
+        event_type="ticket_escalated_admin",
+        event_key=f"email:ticket_escalated:{event_suffix}:admin",
+        ticket_id=ticket.id,
+        ticket_number=ticket_num,
+        recipient_user_id=None,
+        recipient_verified=True,
+    )
+
+    if requester:
+        emp_tpl = render_ticket_field_update_email(
+            employee_name=requester.name,
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            field_name="Escalated Support Group",
+            old_value="AI Self-Service",
+            new_value=group_name,
+            assigned_group=group_name,
+            updated_by_name=actor_name,
+            current_status=status_label,
+            resolution_notes=None,
+            updated_at=updated_str,
+            ticket_url=url,
+        )
+        send_email(
+            db,
+            recipient_email=requester.email,
+            subject=f"[NexDesk AI] Ticket Escalated to {group_name}: {ticket_num}",
+            html_body=emp_tpl["html_body"],
+            text_body=emp_tpl["text_body"],
+            event_type="ticket_escalated",
+            event_key=f"email:ticket_escalated:{event_suffix}:employee",
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            recipient_user_id=requester.id,
+            recipient_verified=bool(getattr(requester, "email_verified", False)),
+        )
+
+
+def send_sla_breach_email(
+    db: Session,
+    ticket: Ticket,
+    sla_status: str,
+) -> None:
+    ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
+    priority_label = PRIORITY_LABELS.get(ticket.priority, ticket.priority)
+    status_label = STATUS_LABELS.get(ticket.status, ticket.status.title())
+    updated_str = _utc_now().strftime("%Y-%m-%d %H:%M UTC")
+    admin_email = get_admin_notification_email()
+
+    from app.services.email_templates import render_ticket_field_update_email
+
+    admin_tpl = render_ticket_field_update_email(
+        employee_name="NexDesk Administrator",
+        ticket_id=ticket.id,
+        ticket_number=ticket_num,
+        field_name="SLA Breach Alert",
+        old_value=f"Priority: {priority_label}",
+        new_value=f"SLA Breached ({sla_status}) on '{ticket.title}'",
+        assigned_group=ticket.group.name if ticket.group else None,
+        updated_by_name="SLA Monitor",
+        current_status=status_label,
+        resolution_notes=None,
+        updated_at=updated_str,
+        ticket_url=_ticket_url(ticket),
+    )
+    send_email(
+        db,
+        recipient_email=admin_email,
+        subject=f"[NexDesk AI] SLA Breach Alert [{priority_label}]: {ticket_num}",
+        html_body=admin_tpl["html_body"],
+        text_body=admin_tpl["text_body"],
+        event_type="sla_breached",
+        event_key=f"email:sla_breached:{ticket.id}:admin",
+        ticket_id=ticket.id,
+        ticket_number=ticket_num,
+        recipient_user_id=None,
+        recipient_verified=True,
+    )
 
 
 
