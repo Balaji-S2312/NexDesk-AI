@@ -82,9 +82,6 @@ def create_ticket(
     notify: bool = True,
 ) -> Ticket:
     """Validate-already-done data -> priority, status, SLA, ticket number, history + audit."""
-    if getattr(requester, "role", None) == "employee" and not getattr(requester, "email_verified", False):
-        raise TicketRuleError("Email verification required. Please verify your employee email address before creating IT support tickets.")
-
     now = created_at or utc_now()
     priority = calculate_priority(data["impact"], data["urgency"])
     policy, resp_deadline, res_deadline = _resolve_sla(db, priority, now)

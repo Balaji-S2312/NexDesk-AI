@@ -8,8 +8,6 @@ export interface User {
   email_verified?: boolean;
   email_verified_at?: string | null;
   created_at: string;
-  verification_delivery_status?: string | null;
-  verification_delivery_error?: string | null;
 }
 
 export interface AuthResponse {
@@ -27,6 +25,11 @@ export interface RegisterCredentials {
   name: string;
   email: string;
   password: string;
+}
+
+export interface ConfirmEmailResponse {
+  message: string;
+  user: User;
 }
 
 export interface AuthContextType {

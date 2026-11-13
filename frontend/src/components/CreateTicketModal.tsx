@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Sparkles,
   Bot,
   Users,
   CheckCircle2,
   Edit3,
-  AlertTriangle,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { PriorityBadge } from './PriorityBadge';
@@ -14,7 +12,6 @@ import { AdaptiveSelect } from './AdaptiveSelect';
 import { CategoryIcon } from './CategoryIcon';
 import { createTicketApi, classifyIncidentApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
-import { useAuth } from '../hooks/useAuth';
 import {
   CATEGORY_OPTIONS,
   IMPACT_OPTIONS,
@@ -53,8 +50,6 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   initialData,
 }) => {
   const { showToast } = useToast();
-  const { user } = useAuth();
-  const isUnverifiedEmployee = user?.role === 'employee' && !user?.email_verified;
 
   // Natural Language Description input for AI Auto-Classification
   const [naturalInput, setNaturalInput] = useState('');
@@ -154,10 +149,6 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (isUnverifiedEmployee) {
-      setError('Email verification required. Please verify your employee email address before creating IT support tickets.');
-      return;
-    }
     if (title.trim().length < 5) {
       setError('Title must be at least 5 characters.');
       return;
@@ -212,35 +203,16 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           <button
             type="submit"
             form="create-ticket-form"
-            disabled={submitting || isUnverifiedEmployee}
+            disabled={submitting}
             className="px-4 py-2 text-xs font-semibold text-white bg-[#087E8B] hover:bg-[#075C66] disabled:opacity-60 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{submitting ? 'Creating Ticket...' : isUnverifiedEmployee ? 'Verification Required' : 'Confirm Ticket Creation'}</span>
+            <span>{submitting ? 'Creating Ticket...' : 'Confirm Ticket Creation'}</span>
           </button>
         </>
       }
     >
       <div className="space-y-4">
-        {isUnverifiedEmployee && (
-          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold">Email Verification Required</p>
-              <p className="text-[11px] opacity-90">
-                In accordance with IT security policy, your employee account ({user?.email}) must be verified before submitting IT support tickets.
-              </p>
-              <Link
-                to="/verify-email"
-                state={{ email: user?.email || '' }}
-                onClick={onClose}
-                className="inline-block text-[11px] font-semibold text-[#087E8B] underline hover:no-underline pt-0.5"
-              >
-                Verify your email with 6-digit OTP &rarr;
-              </Link>
-            </div>
-          </div>
-        )}
 
         {error && (
           <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">

@@ -1,424 +1,228 @@
-"""Tests for Module 12B: Email Verification and Automated Ticket Email Notification System."""
-import uuid
-from datetime import datetime, timedelta, timezone
+"""Tests for in-app email confirmation, removal of OTP endpoints, and optional ticket notifications."""
 from unittest.mock import patch
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+import uuid
 
+from fastapi.testclient import TestClient
+
+from app.core.config import settings
+from app.database.init_db import (
+    DEMO_ADMIN_EMAIL,
+    DEMO_ADMIN_PASSWORD,
+    DEMO_EMPLOYEE_EMAIL,
+    DEMO_EMPLOYEE_PASSWORD,
+)
 from app.main import app
 from app.models.notification import EmailDeliveryLog
-from app.models.email_verification import EmailVerificationToken
-from app.models.ticket import Ticket
 from app.models.user import User
-from app.services.notifications.email_service import get_admin_notification_email
-from app.services.verification_service import hash_token
 from tests.conftest import TestingSessionLocal
 
 client = TestClient(app)
 
 
-@pytest.fixture(autouse=True)
-def mock_smtp_for_unit_tests():
-    """Prevent pytest from opening live Gmail SMTP connections to @example.com addresses."""
-    with patch("app.services.notifications.email_service.smtplib.SMTP") as mock_smtp:
-        yield mock_smtp
+def _register_user(name: str, email: str, password: str = "StrongPassword123!", **extra):
+    payload = {"name": name, "email": email, "password": password}
+    payload.update(extra)
+    return client.post("/api/auth/register", json=payload)
 
 
-def _as_utc(dt):
-    if dt is None:
-        return None
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+def _login_user(email: str, password: str):
+    resp = client.post("/api/auth/login", json={"email": email, "password": password})
+    assert resp.status_code == 200, resp.text
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}, resp.json()["user"]
 
 
-def test_registration_creates_unverified_account_and_dispatches_token():
-    """1. Registration creates an unverified employee account with single-use token and email delivery log."""
-    uid = uuid.uuid4().hex[:6]
-    email = f"emp_{uid}@example.com"
+def test_registration_starts_unconfirmed_without_external_email_and_allows_login():
+    """1. Newly registered employees start Unconfirmed even if payload attempts email_verified=True."""
+    uid = uuid.uuid4().hex[:8]
+    email = f"unconfirmed_{uid}@example.com"
     pwd = "StrongPassword123!"
 
-    resp = client.post("/api/auth/register", json={
-        "name": f"Verification Tester {uid}",
-        "email": email,
-        "password": pwd,
-    })
-    assert resp.status_code == 201, resp.text
-    data = resp.json()
-    assert data["email"] == email
-    assert data["email_verified"] is False
-    assert data["email_verified_at"] is None
+    with patch("app.services.notifications.email_service.send_email") as mock_send:
+        reg_resp = _register_user(
+            f"Employee {uid}",
+            email,
+            pwd,
+            email_verified=True,
+            role="admin",
+        )
+        assert reg_resp.status_code == 201, reg_resp.text
+        mock_send.assert_not_called()
 
-    # Check database token record
-    db: Session = TestingSessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        assert user is not None
-        assert user.email_verified is False
+    user_data = reg_resp.json()
+    assert user_data["email"] == email
+    assert user_data["role"] == "employee"
+    assert user_data["email_verified"] is False
+    assert user_data["email_verified_at"] is None
 
-        # Token record must exist with hash, not plaintext
-        token_rec = db.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == user.id).first()
-        assert token_rec is not None
-        assert token_rec.token_hash is not None
-        assert len(token_rec.token_hash) == 64  # SHA-256 hex digest
-        assert token_rec.used_at is None
-        assert _as_utc(token_rec.expires_at) > datetime.now(timezone.utc)
+    headers, login_user = _login_user(email, pwd)
+    assert login_user["email_verified"] is False
 
-        # Email delivery log record should exist
-        log_rec = db.query(EmailDeliveryLog).filter(
-            EmailDeliveryLog.recipient_email == email,
-            EmailDeliveryLog.event_type == "email_verification",
-        ).first()
-        assert log_rec is not None
-        assert "Verify your NexDesk AI account" in log_rec.subject
-    finally:
-        db.close()
+    me_resp = client.get("/api/auth/me", headers=headers)
+    assert me_resp.status_code == 200
+    assert me_resp.json()["email_verified"] is False
 
 
-def test_email_verification_flow_and_single_use_enforcement():
-    """2. Verifying with valid token activates account; reusing token is rejected."""
-    uid = uuid.uuid4().hex[:6]
-    email = f"verify_{uid}@example.com"
+def test_legacy_otp_and_verification_endpoints_are_removed():
+    """2. Old OTP generation/verification/resend/token endpoints are removed (404)."""
+    endpoints = [
+        ("POST", "/api/auth/send-otp", {}),
+        ("POST", "/api/auth/verify-otp", {"email": "a@example.com", "otp": "123456"}),
+        ("POST", "/api/auth/verify-email", {}),
+        ("POST", "/api/auth/resend-verification", {"email": "a@example.com"}),
+        ("GET", "/api/auth/verification-status", None),
+    ]
+    for method, path, body in endpoints:
+        if method == "GET":
+            resp = client.get(path)
+        else:
+            resp = client.post(path, json=body)
+        assert resp.status_code == 404, f"{method} {path} returned {resp.status_code}"
+
+
+def test_confirm_email_matching_updates_status_and_timestamp():
+    """3. Matching registered email marks user User-confirmed in DB and returns success message."""
+    uid = uuid.uuid4().hex[:8]
+    email = f"confirm_match_{uid}@example.com"
     pwd = "StrongPassword123!"
+    assert _register_user(f"Match {uid}", email, pwd).status_code == 201
+    headers, _ = _login_user(email, pwd)
 
-    resp = client.post("/api/auth/register", json={
-        "name": f"User {uid}",
-        "email": email,
-        "password": pwd,
-    })
-    assert resp.status_code == 201
+    confirm_resp = client.post("/api/auth/confirm-email", json={"email": email}, headers=headers)
+    assert confirm_resp.status_code == 200, confirm_resp.text
+    body = confirm_resp.json()
+    assert body["message"] == "Email address confirmed successfully."
+    assert body["user"]["email_verified"] is True
+    assert body["user"]["email_verified_at"] is not None
 
-    # Extract the token sent in the email delivery log
-    db: Session = TestingSessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        assert user is not None
-        assert not user.email_verified
-
-        token_rec = db.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == user.id).first()
-        assert token_rec is not None
-
-        # Create a known raw token and hash it in DB
-        raw_token = f"test-token-{uid}"
-        token_rec.token_hash = hash_token(raw_token)
-        token_rec.expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
-        db.commit()
-    finally:
-        db.close()
-
-    # 1. Verify with raw_token via query param
-    v_resp = client.post(f"/api/auth/verify-email?token={raw_token}")
-    assert v_resp.status_code == 200, v_resp.text
-    v_data = v_resp.json()
-    assert v_data["email_verified"] is True
-    assert v_data["email"] == email
-
-    # 2. Check user in DB is now verified
-    db = TestingSessionLocal()
-    try:
-        refreshed_user = db.query(User).filter(User.email == email).first()
-        assert refreshed_user.email_verified is True
-        assert refreshed_user.email_verified_at is not None
-
-        token_rec = db.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == refreshed_user.id).first()
-        assert token_rec.used_at is not None
-    finally:
-        db.close()
-
-    # 3. Attempting to reuse the same token should fail (400 Bad Request)
-    reuse_resp = client.post(f"/api/auth/verify-email?token={raw_token}")
-    assert reuse_resp.status_code == 400
-    detail = reuse_resp.json().get("detail", "").lower()
-    assert "already been used" in detail or "invalid" in detail
-
-
-def test_expired_token_rejected():
-    """3. Expired verification token is rejected."""
-    uid = uuid.uuid4().hex[:6]
-    email = f"expired_{uid}@example.com"
-    pwd = "StrongPassword123!"
-
-    resp = client.post("/api/auth/register", json={
-        "name": f"User {uid}",
-        "email": email,
-        "password": pwd,
-    })
-    assert resp.status_code == 201
-
-    db: Session = TestingSessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        raw_token = f"expired-token-{uid}"
-        token_rec = db.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == user.id).first()
-        token_rec.token_hash = hash_token(raw_token)
-        # Set expires_at in the past
-        token_rec.expires_at = datetime.now(timezone.utc) - timedelta(minutes=10)
-        db.commit()
-    finally:
-        db.close()
-
-    v_resp = client.post(f"/api/auth/verify-email?token={raw_token}")
-    assert v_resp.status_code == 400
-    assert "expired" in v_resp.text.lower()
-
-
-def test_resend_verification_cooldown_rate_limit():
-    """4. Resending verification email enforces a 60-second cooldown (429 Too Many Requests)."""
-    uid = uuid.uuid4().hex[:6]
-    email = f"resend_{uid}@example.com"
-    pwd = "StrongPassword123!"
-
-    client.post("/api/auth/register", json={
-        "name": f"User {uid}",
-        "email": email,
-        "password": pwd,
-    })
-
-    # First immediate resend attempt (within 60s of registration) must hit rate limit (429)
-    resend_resp = client.post("/api/auth/resend-verification", json={"email": email})
-    assert resend_resp.status_code == 429
-    assert "wait" in resend_resp.text.lower() or "rate" in resend_resp.text.lower()
-
-
-def test_unverified_employee_cannot_create_ticket():
-    """5. Unverified employee receives HTTP 403 when attempting to create a ticket."""
-    uid = uuid.uuid4().hex[:6]
-    email = f"unverified_{uid}@example.com"
-    pwd = "StrongPassword123!"
-
-    reg_resp = client.post("/api/auth/register", json={
-        "name": f"Unverified Employee {uid}",
-        "email": email,
-        "password": pwd,
-    })
-    assert reg_resp.status_code == 201
-
-    # Login to get JWT
-    login_resp = client.post("/api/auth/login", json={"email": email, "password": pwd})
-    token = login_resp.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # Attempt ticket creation
-    ticket_resp = client.post("/api/tickets", json={
-        "title": "Cannot connect to VPN from home",
-        "description": "Getting error 800 every time I connect to the company VPN tunnel.",
-        "category": "network",
-        "impact": "low",
-        "urgency": "low",
-    }, headers=headers)
-
-    assert ticket_resp.status_code == 403
-    assert "verification required" in ticket_resp.text.lower()
-
-
-def test_verified_employee_ticket_creation_sends_dual_emails():
-    """6. Verified employee creates ticket -> Admin notification to bb7578167@gmail.com and Employee confirmation dispatched."""
-    uid = uuid.uuid4().hex[:6]
-    email = f"verified_{uid}@example.com"
-    pwd = "StrongPassword123!"
-
-    reg_resp = client.post("/api/auth/register", json={
-        "name": f"Verified Worker {uid}",
-        "email": email,
-        "password": pwd,
-    })
-    assert reg_resp.status_code == 201
-
-    # Manually verify user in DB
-    db: Session = TestingSessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        user.email_verified = True
-        user.email_verified_at = datetime.now(timezone.utc)
-        db.commit()
-        user_id = user.id
-    finally:
-        db.close()
-
-    # Login
-    login_resp = client.post("/api/auth/login", json={"email": email, "password": pwd})
-    token = login_resp.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # Create ticket
-    ticket_resp = client.post("/api/tickets", json={
-        "title": "Outlook crashes when opening encrypted emails",
-        "description": "Whenever I click on an encrypted mail from client, Outlook terminates immediately.",
-        "category": "software",
-        "subcategory": "Outlook",
-        "impact": "medium",
-        "urgency": "high",
-    }, headers=headers)
-
-    assert ticket_resp.status_code == 201, ticket_resp.text
-    ticket_data = ticket_resp.json()
-    ticket_id = ticket_data["id"]
-    ticket_number = ticket_data["ticket_number"]
-
-    # Verify both emails are logged in EmailDeliveryLog
-    db = TestingSessionLocal()
-    try:
-        # 1. Admin notification to configured administrator email
-        expected_admin_email = get_admin_notification_email()
-        admin_email_log = db.query(EmailDeliveryLog).filter(
-            EmailDeliveryLog.ticket_id == ticket_id,
-            EmailDeliveryLog.recipient_email == expected_admin_email,
-            EmailDeliveryLog.event_type == "new_incident_alert",
-        ).first()
-        assert admin_email_log is not None
-        assert f"New Ticket Created — {ticket_number}" in admin_email_log.subject
-        assert admin_email_log.recipient_verified is True
-
-        # 2. Employee confirmation to verified email
-        emp_email_log = db.query(EmailDeliveryLog).filter(
-            EmailDeliveryLog.ticket_id == ticket_id,
-            EmailDeliveryLog.recipient_email == email,
-            EmailDeliveryLog.event_type == "ticket_submitted",
-        ).first()
-        assert emp_email_log is not None
-        assert f"Ticket Created Successfully — {ticket_number}" in emp_email_log.subject
-        assert emp_email_log.recipient_verified is True
-    finally:
-        db.close()
-
-
-def test_admin_modifies_ticket_triggers_employee_notification():
-    """7. Admin modifies ticket (status/priority/group) -> employee receives update email."""
-    # Login as seeded demo admin
-    from app.database.init_db import DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD
-    admin_login = client.post("/api/auth/login", json={
-        "email": DEMO_ADMIN_EMAIL,
-        "password": DEMO_ADMIN_PASSWORD,
-    })
-    admin_token = admin_login.json()["access_token"]
-    admin_headers = {"Authorization": f"Bearer {admin_token}"}
-
-    # Create a verified employee and ticket
-    uid = uuid.uuid4().hex[:6]
-    emp_email = f"emp_update_{uid}@example.com"
-    client.post("/api/auth/register", json={
-        "name": f"Ticket Target {uid}",
-        "email": emp_email,
-        "password": "Password123!",
-    })
-    db: Session = TestingSessionLocal()
-    try:
-        u = db.query(User).filter(User.email == emp_email).first()
-        u.email_verified = True
-        u.email_verified_at = datetime.now(timezone.utc)
-        db.commit()
-    finally:
-        db.close()
-
-    emp_login = client.post("/api/auth/login", json={"email": emp_email, "password": "Password123!"})
-    emp_token = emp_login.json()["access_token"]
-    emp_headers = {"Authorization": f"Bearer {emp_token}"}
-
-    create_resp = client.post("/api/tickets", json={
-        "title": "VPN drops every 5 minutes",
-        "description": "Network tunnel disconnects frequently during video calls.",
-        "category": "network",
-        "impact": "low",
-        "urgency": "low",
-    }, headers=emp_headers)
-    assert create_resp.status_code == 201
-    ticket_id = create_resp.json()["id"]
-    ticket_number = create_resp.json()["ticket_number"]
-
-    # Admin assigns ticket to Network group
-    patch_resp = client.patch(f"/api/tickets/{ticket_id}", json={
-        "group_id": 2,  # Network Support
-    }, headers=admin_headers)
-    assert patch_resp.status_code == 200
-
-    # Verify assignment email sent to employee
-    db = TestingSessionLocal()
-    try:
-        assign_log = db.query(EmailDeliveryLog).filter(
-            EmailDeliveryLog.ticket_id == ticket_id,
-            EmailDeliveryLog.recipient_email == emp_email,
-            EmailDeliveryLog.event_type == "ticket_assigned",
-        ).first()
-        assert assign_log is not None
-        assert "Ticket Assigned" in assign_log.subject and ticket_number in assign_log.subject
-    finally:
-        db.close()
-
-    # Admin updates status to resolved with resolution notes
-    resolve_resp = client.patch(f"/api/tickets/{ticket_id}", json={
-        "status": "resolved",
-        "resolution_notes": "Reset VPN tunnel session profile and flushed routing tables.",
-    }, headers=admin_headers)
-    assert resolve_resp.status_code == 200
-
-    # Verify resolution email sent to employee
-    db = TestingSessionLocal()
-    try:
-        res_log = db.query(EmailDeliveryLog).filter(
-            EmailDeliveryLog.ticket_id == ticket_id,
-            EmailDeliveryLog.recipient_email == emp_email,
-            EmailDeliveryLog.event_type == "ticket_resolved",
-        ).first()
-        assert res_log is not None
-        assert "Ticket Resolved" in res_log.subject and ticket_number in res_log.subject
-        assert res_log.recipient_verified is True
-    finally:
-        db.close()
-
-
-def test_unchanged_values_do_not_send_duplicate_emails():
-    """8. Submitting identical values does not trigger duplicate emails."""
-    from app.database.init_db import DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD
-    admin_login = client.post("/api/auth/login", json={
-        "email": DEMO_ADMIN_EMAIL,
-        "password": DEMO_ADMIN_PASSWORD,
-    })
-    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
-
-    uid = uuid.uuid4().hex[:6]
-    emp_email = f"dup_{uid}@example.com"
-    client.post("/api/auth/register", json={
-        "name": f"Dup Tester {uid}",
-        "email": emp_email,
-        "password": "Password123!",
-    })
-    db: Session = TestingSessionLocal()
-    try:
-        u = db.query(User).filter(User.email == emp_email).first()
-        u.email_verified = True
-        u.email_verified_at = datetime.now(timezone.utc)
-        db.commit()
-    finally:
-        db.close()
-
-    emp_login = client.post("/api/auth/login", json={"email": emp_email, "password": "Password123!"})
-    emp_headers = {"Authorization": f"Bearer {emp_login.json()['access_token']}"}
-
-    create_resp = client.post("/api/tickets", json={
-        "title": "Monitor flickers intermittently",
-        "description": "HDMI connection becomes blurry whenever laptop charges.",
-        "category": "hardware",
-        "impact": "low",
-        "urgency": "low",
-    }, headers=emp_headers)
-    ticket_id = create_resp.json()["id"]
+    me_resp = client.get("/api/auth/me", headers=headers)
+    assert me_resp.status_code == 200
+    assert me_resp.json()["email_verified"] is True
 
     db = TestingSessionLocal()
     try:
-        initial_count = db.query(EmailDeliveryLog).filter(EmailDeliveryLog.ticket_id == ticket_id).count()
+        rec = db.query(User).filter(User.email == email).first()
+        assert rec is not None
+        assert rec.email_verified is True
+        assert rec.email_verified_at is not None
     finally:
         db.close()
 
-    # Submit patch with identical impact and urgency
-    patch_resp = client.patch(f"/api/tickets/{ticket_id}", json={
-        "impact": "low",
-        "urgency": "low",
-    }, headers=admin_headers)
-    assert patch_resp.status_code == 200
 
-    # Count of email delivery logs should not increase
+def test_confirm_email_case_insensitive_and_whitespace_trimmed():
+    """4. Case-insensitive and whitespace-trimmed matching succeeds."""
+    uid = uuid.uuid4().hex[:8]
+    email = f"case.user_{uid}@nexdesk.ai"
+    pwd = "StrongPassword123!"
+    assert _register_user(f"Case {uid}", email, pwd).status_code == 201
+    headers, _ = _login_user(email, pwd)
+
+    submitted = f"   CASE.User_{uid.upper()}@NexDesk.AI  "
+    confirm_resp = client.post("/api/auth/confirm-email", json={"email": submitted}, headers=headers)
+    assert confirm_resp.status_code == 200, confirm_resp.text
+    assert confirm_resp.json()["message"] == "Email address confirmed successfully."
+    assert confirm_resp.json()["user"]["email_verified"] is True
+
+
+def test_confirm_email_mismatch_rejects_and_preserves_unconfirmed():
+    """5. Non-matching email returns HTTP 400 and leaves status Unconfirmed."""
+    uid = uuid.uuid4().hex[:8]
+    email = f"mismatch_{uid}@example.com"
+    pwd = "StrongPassword123!"
+    assert _register_user(f"Mismatch {uid}", email, pwd).status_code == 201
+    headers, _ = _login_user(email, pwd)
+
+    bad_resp = client.post(
+        "/api/auth/confirm-email",
+        json={"email": f"wrong_{uid}@example.com"},
+        headers=headers,
+    )
+    assert bad_resp.status_code == 400
+    assert bad_resp.json()["detail"] == "The email addresses do not match. Please check and try again."
+
+    me_resp = client.get("/api/auth/me", headers=headers)
+    assert me_resp.json()["email_verified"] is False
+
+
+def test_confirm_email_requires_authentication():
+    """6. Unauthenticated confirmation attempts are rejected (401/403)."""
+    resp = client.post("/api/auth/confirm-email", json={"email": "anyone@example.com"})
+    assert resp.status_code in (401, 403)
+
+
+def test_employee_cannot_confirm_another_users_email():
+    """7. Signed-in Employee A cannot confirm Employee B's email address."""
+    uid = uuid.uuid4().hex[:8]
+    email_a = f"emp_a_{uid}@example.com"
+    email_b = f"emp_b_{uid}@example.com"
+    pwd = "StrongPassword123!"
+
+    assert _register_user("Employee A", email_a, pwd).status_code == 201
+    assert _register_user("Employee B", email_b, pwd).status_code == 201
+    headers_a, _ = _login_user(email_a, pwd)
+    headers_b, _ = _login_user(email_b, pwd)
+
+    # Employee A enters Employee B's email address
+    cross_resp = client.post("/api/auth/confirm-email", json={"email": email_b}, headers=headers_a)
+    assert cross_resp.status_code == 400
+    assert cross_resp.json()["detail"] == "The email addresses do not match. Please check and try again."
+
+    # Neither Employee A nor Employee B is confirmed
+    assert client.get("/api/auth/me", headers=headers_a).json()["email_verified"] is False
+    assert client.get("/api/auth/me", headers=headers_b).json()["email_verified"] is False
+
+
+def test_existing_admin_and_employee_logins_and_optional_ticket_notifications():
+    """8. Seeded admin & employee logins work; unconfirmed employee submits ticket and admin resolves it."""
+    admin_headers, admin_user = _login_user(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)
+    assert admin_user["role"] == "admin"
+
+    emp_headers, demo_emp = _login_user(DEMO_EMPLOYEE_EMAIL, DEMO_EMPLOYEE_PASSWORD)
+    assert demo_emp["role"] == "employee"
+
+    # Also test a newly registered, still-unconfirmed employee creating a ticket
+    uid = uuid.uuid4().hex[:8]
+    emp_email = f"ticket_emp_{uid}@example.com"
+    assert _register_user(f"Ticket Emp {uid}", emp_email, "StrongPassword123!").status_code == 201
+    new_emp_headers, _ = _login_user(emp_email, "StrongPassword123!")
+
+    with patch("app.services.notifications.email_service.smtplib.SMTP"):
+        ticket_resp = client.post(
+            "/api/tickets",
+            json={
+                "title": "Outlook crashes when opening encrypted emails",
+                "description": "Whenever I click on an encrypted mail from client, Outlook terminates immediately.",
+                "category": "software",
+                "subcategory": "Outlook",
+                "impact": "medium",
+                "urgency": "high",
+            },
+            headers=new_emp_headers,
+        )
+        assert ticket_resp.status_code == 201, ticket_resp.text
+        ticket = ticket_resp.json()
+        ticket_id = ticket["id"]
+
+        resolve_resp = client.patch(
+            f"/api/tickets/{ticket_id}",
+            json={
+                "status": "resolved",
+                "resolution_notes": "Cleared corrupt S/MIME cache and updated Outlook client profile.",
+            },
+            headers=admin_headers,
+        )
+        assert resolve_resp.status_code == 200, resolve_resp.text
+        assert resolve_resp.json()["status"] == "resolved"
+
     db = TestingSessionLocal()
     try:
-        after_count = db.query(EmailDeliveryLog).filter(EmailDeliveryLog.ticket_id == ticket_id).count()
-        assert after_count == initial_count
+        logs = db.query(EmailDeliveryLog).filter(EmailDeliveryLog.ticket_id == ticket_id).all()
+        assert len(logs) >= 1
+        recipients = {log.recipient_email for log in logs}
+        assert emp_email in recipients or settings.ADMIN_NOTIFICATION_EMAIL in recipients
     finally:
         db.close()
+
+    # Existing employee can still list own tickets cleanly
+    list_resp = client.get("/api/tickets", headers=emp_headers)
+    assert list_resp.status_code == 200

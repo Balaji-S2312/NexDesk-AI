@@ -24,7 +24,8 @@ NexDesk AI is an Agentic Generative AI-powered IT Service Management (ITSM) plat
 | **Module 12A** | Global Contrast & Enterprise Light UI System (Deep Teal) | **COMPLETED** | 2026-11-13 |
 | **Module 12B** | Email Verification & Automated Gmail SMTP Notifications | **COMPLETED** | 2026-11-13 |
 | **Module 13** | Cloud Deployment, Production Hardening & Live Cloud Launch | **COMPLETED & LIVE** | 2026-11-13 |
-| **Prod Fix** | 6-Digit Email OTP Verification, Auth UX & Adaptive Dropdown UI | **COMPLETED & LIVE** | 2026-11-13 |
+| **Prod Fix 1** | Adaptive Dropdown UI & Auth UX Hardening | **COMPLETED & LIVE** | 2026-11-13 |
+| **Prod Fix 2** | In-App Email Confirmation (OTP Dependency Removal) | **COMPLETED** | 2026-11-13 |
 
 ---
 
@@ -343,9 +344,11 @@ NexDesk AI is an Agentic Generative AI-powered IT Service Management (ITSM) plat
     - Frontend deployed on Vercel: `https://nexdesk-ai.vercel.app` (wired to `VITE_API_URL=https://nexdesk-backend-z98v.onrender.com/api`).
     - Backend deployed on Render + Neon PostgreSQL + Groq LLM + Gmail SMTP: `https://nexdesk-backend-z98v.onrender.com`.
     - Live E2E API & Vercel browser UI verification passed across `/api/health`, RBAC login, Admin Dashboard telemetry, Incidents, Notifications, Ticket lifecycle (`INC0000001`), KB upload + ONNX RAG retrieval, and Groq AI Assistant chat (`200 OK`, zero CORS/502 errors).
-- [x] **Production Fix — 6-Digit Email OTP Verification, Auth UX & Adaptive Dropdown Redesign:**
-  - **Root Cause Fixed:** `Profile.tsx` and `Notifications.tsx` previously called `POST /api/auth/verify-email` with an empty token body (`400 Verification token is required.`), while `AppLayout.tsx` and `CreateTicketModal.tsx` appended `?email=...` in the URL. Both routes now direct to `/verify-email` via router state/`sessionStorage`, and `/auth/verify-email` link validation remains repaired cleanly for single-use token links.
-  - **6-Digit Email OTP System:** Added `EmailVerificationOTP` (`email_verification_otps`) model, keyed SHA-256 OTP hashing, `secrets.randbelow(1_000_000)` generation, 10-minute expiry, 5-attempt lockout, 60-second resend cooldown (`429`), 15-minute sliding rate limits, anti-enumeration protection, HTTP `503` on SMTP failures, and zero plaintext OTP logging.
-  - **OTP & Auth UI:** Built 6-box auto-advancing/paste-capable `/verify-email` OTP UI with live countdown timer, `"Registration Successful!"` confirmation flow, friendly `409` duplicate registration card with `Go to Login`, clean `401` login feedback, and double-submit guards.
+- [x] **Production Fix 1 — Auth UX & Adaptive Dropdown Redesign:**
+  - **Auth UX:** Clean `"Registration Successful!"` confirmation flow, friendly `409` duplicate registration card with `Go to Login`, clean `401` login feedback, and double-submit guards.
   - **Adaptive Select UI:** Replaced all `19` native `<select>` elements across `9` components/pages with custom accessible `AdaptiveSelect` + `CategoryIcon` (`Hardware`, `Software`, `Network`, `Access Management`, `Email`, `Security`, `Other`) featuring desktop floating panels and `< 640px` mobile bottom-sheet drawers.
-  - Verified **141 passed, 0 failed** backend tests and **0 errors / 0 warnings** frontend ESLint + `tsc` + Vite build (`2f52be2`), deployed and verified live across Vercel & Render (noting Render Free Tier blocks outbound SMTP ports 25/465/587 at the infrastructure level, returning `[Errno 101] Network is unreachable` in `EmailDeliveryLog`).
+- [x] **Production Fix 2 — In-App Email Confirmation (Removed External Email OTP Dependency):**
+  - **OTP & Restriction Removal:** Removed OTP/token generation, `/send-otp`, `/verify-otp`, `/verify-email`, `/resend-verification`, `/verification-status`, `EmailVerificationToken`/`EmailVerificationOTP` models, `verification_service.py`, `render_email_verification`, `/verify-email` route, and `403` verification ticket/login gates.
+  - **In-App Email Confirmation (`POST /api/auth/confirm-email`):** Newly registered employees start `Unconfirmed` (`email_verified=False`). On `/profile`, the **Email Confirmation** section displays registered email, `Unconfirmed` / `User-confirmed` status, and a clean confirmation dialog comparing trimmed case-insensitive email strictly against `current_user.email` on the backend (`"Email address confirmed successfully."` vs `"The email addresses do not match. Please check and try again."`). Explicitly labeled `User-confirmed` (not `"Email verified"` or mailbox proof).
+  - **Preserved Optional Ticket Notifications:** Ticket submission, assignment, resolution, and administrator notifications remain active independently via background email delivery.
+  - Verified **136 passed, 0 failed** backend tests and **0 errors / 0 warnings** frontend ESLint + `tsc` + Vite build.

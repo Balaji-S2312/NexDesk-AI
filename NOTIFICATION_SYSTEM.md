@@ -71,10 +71,10 @@ FRONTEND_BASE_URL=http://localhost:5173
 - `PATCH /api/notifications/read-all`: Mark all unread notifications for the authenticated user read.
 - `GET /api/notifications/email-history`: Scoped email audit logs (employees see only their own records; admins see organizational records).
 - `GET /api/notifications/config`: Admin-only sanitized SMTP & routing summary (never returns `SMTP_PASSWORD`).
-- `POST /api/auth/verify-email`: Marks the authenticated user's registered email as verified (`email_verified=True`).
+- `POST /api/auth/confirm-email`: Authenticated self-service endpoint where an employee re-enters their registered email (trimmed whitespace, case-insensitive) to update their status from `Unconfirmed` to `User-confirmed` (`email_verified=True`, `email_verified_at`). Rejects mismatched emails with HTTP `400`.
 
 ---
 
 ## 6. Known Limitations
-- **Email verification flow:** Full token-based out-of-band verification emails (clicking a signed verification link in an external inbox) are outside current scope; newly registered employees start with `email_verified=False`, outbound delivery logs record `recipient_verified=False` with an unverified-address banner, and users can confirm verification in-app via `/api/auth/verify-email` (`Notification Centre` / `Profile`).
-- **Live external SMTP test:** Outbound SMTP transport is verified with mocked `smtplib.SMTP` servers in automated tests (`test_notifications.py`); real external inbox delivery requires configuring live `SMTP_*` credentials in `backend/.env`.
+- **In-app email confirmation vs. mailbox ownership:** Newly registered employees start with `email_verified=False` (`Unconfirmed`) and can mark their address as `User-confirmed` in-app on `/profile` (`POST /api/auth/confirm-email`). This is strictly a user-confirmed self-check and is not treated as proof of external mailbox ownership; ticket submission and login are never blocked by external email delivery.
+- **Live external SMTP test:** Ticket, assignment, resolution, and admin alerts remain separate optional email functionality (`smtplib.SMTP` mocked in `test_notifications.py` & `test_email_verification_notifications.py`); real external inbox delivery requires configuring live `SMTP_*` credentials in `backend/.env` on a host permitting outbound SMTP.

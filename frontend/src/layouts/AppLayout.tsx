@@ -1,9 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Outlet, useLocation, Link } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { TopNavbar } from '../components/TopNavbar';
-import { useAuth } from '../hooks/useAuth';
 import { getHealthApi } from '../services/api';
 import { HealthResponse } from '../types/api';
 
@@ -24,7 +22,6 @@ const PAGE_TITLES: Record<string, string> = {
 
 export const AppLayout = () => {
   const location = useLocation();
-  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -82,24 +79,6 @@ export const AppLayout = () => {
           onRefreshHealth={fetchHealth}
           pageTitle={pageTitle}
         />
-
-        {user?.role === 'employee' && !user?.email_verified && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between text-xs text-amber-800 shrink-0">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                <strong>Email verification required:</strong> Your employee account ({user.email}) is not yet verified. Please verify your email before submitting IT support tickets.
-              </span>
-            </div>
-            <Link
-              to="/verify-email"
-              state={{ email: user.email }}
-              className="inline-flex items-center gap-1 font-semibold underline hover:no-underline text-amber-800 ml-4 shrink-0"
-            >
-              Verify Email (6-Digit OTP)
-            </Link>
-          </div>
-        )}
 
         <main className="flex-1 overflow-y-auto p-5 sm:p-8">
           <Outlet />

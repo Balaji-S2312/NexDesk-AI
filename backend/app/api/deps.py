@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -8,35 +8,6 @@ from app.models.user import User
 from app.core.security import decode_access_token
 
 security = HTTPBearer(auto_error=True)
-optional_security = HTTPBearer(auto_error=False)
-
-
-def _resolve_user_from_credentials(
-    credentials: HTTPAuthorizationCredentials,
-    db: Session,
-) -> Optional[User]:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        return None
-    user_id_str = payload.get("sub")
-    if not user_id_str:
-        return None
-    try:
-        user_id = int(user_id_str)
-    except ValueError:
-        return None
-    return db.query(User).filter(User.id == user_id).first()
-
-
-def get_optional_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
-    db: Session = Depends(get_db),
-) -> Optional[User]:
-    """Return authenticated User when valid Bearer credentials are supplied, else None."""
-    if not credentials or not credentials.credentials:
-        return None
-    return _resolve_user_from_credentials(credentials, db)
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),

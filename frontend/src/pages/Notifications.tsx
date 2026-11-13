@@ -20,9 +20,7 @@ import {
   listNotificationsApi,
   markAllNotificationsReadApi,
   markNotificationReadApi,
-  sendVerificationOtpApi,
 } from '../services/api';
-import { PENDING_VERIFY_EMAIL_KEY } from './Register';
 import {
   EmailDeliveryLogItem,
   NotificationConfigStatus,
@@ -54,7 +52,7 @@ const iconForType = (type: string) => {
 
 export const Notifications: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAdmin, refreshUser } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { showToast } = useToast();
 
   const [tab, setTab] = useState<'in_app' | 'email_logs'>('in_app');
@@ -64,7 +62,6 @@ export const Notifications: React.FC = () => {
   const [emailLogs, setEmailLogs] = useState<EmailDeliveryLogItem[]>([]);
   const [configStatus, setConfigStatus] = useState<NotificationConfigStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [verifying, setVerifying] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -142,47 +139,6 @@ export const Notifications: React.FC = () => {
     else if (item.ticket_id) navigate(`/tickets/${item.ticket_id}`);
   };
 
-  const handleVerifyEmail = async () => {
-    if (!user || verifying) return;
-    setVerifying(true);
-    try {
-      sessionStorage.setItem(PENDING_VERIFY_EMAIL_KEY, user.email);
-    } catch {
-      // ignore storage errors
-    }
-    try {
-      const res = await sendVerificationOtpApi();
-      if (res.already_verified) {
-        if (refreshUser) await refreshUser();
-        showToast({
-          type: 'success',
-          title: 'Email verified',
-          message: `${user.email} is now marked as verified for notifications.`,
-        });
-        return;
-      }
-      showToast({
-        type: 'success',
-        title: 'Verification code sent',
-        message: `Enter the 6-digit OTP sent to ${user.email}.`,
-      });
-      navigate('/verify-email', { state: { email: user.email, otpJustSent: true } });
-    } catch (err: unknown) {
-      const apiErr = err as Error & { status?: number };
-      if (apiErr?.status === 429) {
-        navigate('/verify-email', { state: { email: user.email } });
-        return;
-      }
-      showToast({
-        type: 'error',
-        title: 'Unable to send OTP',
-        message: err instanceof Error ? err.message : 'Unable to send verification code.',
-      });
-    } finally {
-      setVerifying(false);
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -229,20 +185,19 @@ export const Notifications: React.FC = () => {
             <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <div className="text-xs font-bold text-amber-900">
-                Registered Email Currently Unverified ({user.email})
+                Registered Email Status: Unconfirmed ({user.email})
               </div>
               <p className="text-xs text-amber-800 mt-0.5">
-                Notifications route to your authenticated database email, and delivery logs currently record this address as unverified until confirmed.
+                Notifications route to your registered email address. You can mark your address as User-confirmed on your profile page.
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={handleVerifyEmail}
-            disabled={verifying}
-            className="px-3.5 py-1.5 rounded-lg bg-[#087E8B] hover:bg-[#075C66] text-white text-xs font-semibold shrink-0 disabled:opacity-60 transition-colors"
+            onClick={() => navigate('/profile')}
+            className="px-3.5 py-1.5 rounded-lg bg-[#087E8B] hover:bg-[#075C66] text-white text-xs font-semibold shrink-0 transition-colors cursor-pointer"
           >
-            {verifying ? 'Sending OTP...' : 'Verify Email Now'}
+            Confirm in Profile
           </button>
         </div>
       )}

@@ -10,11 +10,8 @@ import {
   ArrowRight,
   Shield,
   CheckCircle2,
-  ShieldCheck,
   Loader2,
 } from 'lucide-react';
-
-export const PENDING_VERIFY_EMAIL_KEY = 'nexdesk_pending_verify_email';
 
 export const Register: React.FC = () => {
   const [name, setName] = useState('');
@@ -24,8 +21,6 @@ export const Register: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [duplicateAccount, setDuplicateAccount] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
-  const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
-  const [deliveryError, setDeliveryError] = useState<string | null>(null);
 
   const { register, clearError } = useAuth();
   const navigate = useNavigate();
@@ -58,15 +53,7 @@ export const Register: React.FC = () => {
         email: normalizedEmail,
         password,
       });
-      const finalEmail = created.email || normalizedEmail;
-      try {
-        sessionStorage.setItem(PENDING_VERIFY_EMAIL_KEY, finalEmail);
-      } catch {
-        // Ignore storage restrictions
-      }
-      setDeliveryStatus(created.verification_delivery_status || null);
-      setDeliveryError(created.verification_delivery_error || null);
-      setRegisteredEmail(finalEmail);
+      setRegisteredEmail(created.email || normalizedEmail);
     } catch (err: unknown) {
       const apiErr = err as Error & { status?: number };
       const msg = apiErr instanceof Error ? apiErr.message : '';
@@ -121,28 +108,14 @@ export const Register: React.FC = () => {
 
               <div className="p-4 rounded-xl bg-[#F7F8F6] border border-[#DCE4E3] text-left space-y-2">
                 <p className="text-xs font-semibold text-[#172B3A] leading-relaxed">
-                  Your account has been created. Please proceed to the Login page and sign in using your registered email and password.
+                  Your employee account has been created. Please proceed to the Login page and sign in using your registered email and password.
                 </p>
-                <div className="pt-2 border-t border-[#DCE4E3] flex items-start gap-2 text-[11px] text-[#526773]">
-                  <ShieldCheck className="w-4 h-4 text-[#087E8B] shrink-0 mt-0.5" />
-                  <span>
-                    {deliveryStatus === 'failed' || deliveryStatus === 'skipped_unconfigured' ? (
-                      <>
-                        <strong className="text-[#C24141]">Verification email could not be dispatched:</strong>{' '}
-                        {deliveryError || 'Mail delivery is currently unavailable on this server.'}{' '}
-                        Your account stays <strong>Unverified</strong> until OTP verification completes.
-                      </>
-                    ) : (
-                      <>
-                        <strong>Email verification pending:</strong> A 6-digit verification OTP has been accepted by the mail server for dispatch to{' '}
-                        <span className="font-semibold text-[#172B3A]">{registeredEmail}</span>. Check your Inbox or Spam folder and enter the code to verify your account.
-                      </>
-                    )}
-                  </span>
-                </div>
+                <p className="text-[11px] text-[#526773] pt-2 border-t border-[#DCE4E3]">
+                  Your email status is currently <strong>Unconfirmed</strong>. You can confirm your email address inside your Profile page after signing in.
+                </p>
               </div>
 
-              <div className="space-y-2.5 pt-1">
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => navigate('/login', { state: { email: registeredEmail } })}
@@ -150,23 +123,6 @@ export const Register: React.FC = () => {
                 >
                   <span>Go to Login</span>
                   <ArrowRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate('/verify-email', {
-                      state: {
-                        email: registeredEmail,
-                        otpJustSent:
-                          deliveryStatus === 'accepted_by_smtp' ||
-                          deliveryStatus === 'accepted_by_provider',
-                      },
-                    })
-                  }
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-[#087E8B] bg-[#DCEFF0] hover:bg-[#cde6e8] border border-[#B5E1E4] transition-colors"
-                >
-                  <Mail className="w-4 h-4" />
-                  <span>Verify Email with 6-Digit OTP</span>
                 </button>
               </div>
             </div>

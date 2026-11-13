@@ -541,10 +541,6 @@ def tool_create_ticket_after_confirmation(
     if pending.user_id != user.id and user.role != "admin":
         raise AgentSafetyError("You are not authorized to confirm another user's pending ticket.")
 
-    target_user = db.query(User).filter(User.id == pending.user_id).first() or user
-    if getattr(target_user, "role", None) == "employee" and not getattr(target_user, "email_verified", False):
-        raise AgentSafetyError("Email verification required. Please verify your employee email address before creating IT support tickets.")
-
     if pending.status == "confirmed":
         raise DuplicateAgentActionError(
             f"Confirmation {confirmation_id} has already been processed (Ticket ID {pending.result_ticket_id})."

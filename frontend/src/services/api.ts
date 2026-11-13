@@ -387,38 +387,9 @@ export const getNotificationConfigApi = async (): Promise<NotificationConfigStat
   return response.data;
 };
 
-export interface OTPDispatchResponse {
-  message: string;
-  cooldown_seconds: number;
-  expires_in_seconds: number;
-  already_verified: boolean;
-  delivery_stage?: string;
-}
-
-export const sendVerificationOtpApi = async (email?: string): Promise<OTPDispatchResponse> => {
-  const response = await api.post<OTPDispatchResponse>('/auth/send-otp', email ? { email } : {});
-  return response.data;
-};
-
-export const verifyEmailOtpApi = async (otp: string, email?: string): Promise<User> => {
-  const payload = email ? { otp, email } : { otp };
-  const response = await api.post<User>('/auth/verify-otp', payload);
-  return response.data;
-};
-
-// Module 12B: Email Verification & Automated Notifications
-export const verifyEmailWithTokenApi = async (token: string): Promise<User> => {
-  const response = await api.post<User>('/auth/verify-email', { token });
-  return response.data;
-};
-
-export const resendVerificationEmailApi = async (email: string): Promise<{ message: string }> => {
-  const response = await api.post<{ message: string }>('/auth/resend-verification', { email });
-  return response.data;
-};
-
-export const getVerificationStatusApi = async (): Promise<{ email_verified: boolean; email: string }> => {
-  const response = await api.get<{ email_verified: boolean; email: string }>('/auth/verification-status');
+// In-app self-service email confirmation
+export const confirmEmailApi = async (email: string): Promise<{ message: string; user: User }> => {
+  const response = await api.post<{ message: string; user: User }>('/auth/confirm-email', { email });
   return response.data;
 };
 

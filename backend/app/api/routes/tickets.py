@@ -54,12 +54,6 @@ def create_ticket_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role == "employee" and not getattr(current_user, "email_verified", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email verification required. Please verify your employee email address before creating IT support tickets.",
-        )
-
     data = {
         "title": payload.title,
         "description": payload.description,

@@ -341,7 +341,7 @@ Run the comprehensive automated pytest test suite:
 cd backend
 .venv\Scripts\python -m pytest tests -q
 ```
-*Current test suite status: **141 passed, 0 failed**.*
+*Current test suite status: **136 passed, 0 failed**.*
 
 Run frontend linting, TypeScript checks, and production build:
 ```bash

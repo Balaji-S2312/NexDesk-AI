@@ -9,7 +9,6 @@ import { useAuth } from './hooks/useAuth';
 // Auth pages
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { VerifyEmail } from './pages/VerifyEmail';
 
 // Employee & Shared pages
 import { EmployeeOverview } from './pages/EmployeeOverview';
@@ -45,7 +44,6 @@ export default function App() {
               {/* Public Auth Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
 
               {/* Authenticated Workspace wrapped in AppLayout */}
               <Route element={<ProtectedRoute />}>
