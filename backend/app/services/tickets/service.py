@@ -80,6 +80,7 @@ def create_ticket(
     ip: Optional[str] = None,
     created_at: Optional[datetime] = None,
     notify: bool = True,
+    background_tasks: Any = None,
 ) -> Ticket:
     """Validate-already-done data -> priority, status, SLA, ticket number, history + audit."""
     now = created_at or utc_now()
@@ -120,7 +121,7 @@ def create_ticket(
         try:
             from app.services.notifications.notification_service import notify_ticket_submitted
 
-            notify_ticket_submitted(db, ticket, requester)
+            notify_ticket_submitted(db, ticket, requester, background_tasks=background_tasks)
         except Exception as exc:
             logger.warning("Post-create notification failed for %s: %s", ticket.ticket_number, exc)
 
@@ -139,6 +140,7 @@ def update_ticket(
     ip: Optional[str] = None,
     when: Optional[datetime] = None,
     notify: bool = True,
+    background_tasks: Any = None,
 ) -> List[Dict[str, Any]]:
     """Apply changes, recording old/new value, actor and timestamps. Returns the change list."""
     now = when or utc_now()
@@ -244,6 +246,7 @@ def update_ticket(
                     str(priority_change["new"]),
                     actor=actor,
                     event_token=f"{ticket.id}:priority:{priority_change['old']}->{priority_change['new']}:{now.isoformat()}",
+                    background_tasks=background_tasks,
                 )
 
             if group_change:
@@ -253,6 +256,7 @@ def update_ticket(
                     str(group_change["new"]),
                     actor=actor,
                     event_token=f"{ticket.id}:assign:{group_change['new']}:{now.isoformat()}",
+                    background_tasks=background_tasks,
                 )
 
             if status_change:
@@ -263,6 +267,7 @@ def update_ticket(
                         ticket.resolution_notes or "",
                         actor=actor,
                         event_token=f"{ticket.id}:resolved:{now.isoformat()}",
+                        background_tasks=background_tasks,
                     )
                 elif not (group_change and status_change["new"] == "assigned"):
                     notify_ticket_status_changed(
@@ -272,6 +277,7 @@ def update_ticket(
                         str(status_change["new"]),
                         actor=actor,
                         event_token=f"{ticket.id}:status:{status_change['old']}->{status_change['new']}:{now.isoformat()}",
+                        background_tasks=background_tasks,
                     )
         except Exception as exc:
             logger.warning("Post-update notification failed for %s: %s", ticket.ticket_number, exc)

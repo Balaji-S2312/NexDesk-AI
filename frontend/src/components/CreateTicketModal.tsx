@@ -172,6 +172,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
         title: 'Ticket Created',
         message: `${ticket.ticket_number} created with priority ${ticket.priority_label}.`,
       });
+      window.dispatchEvent(new Event('nexdesk-notifications-updated'));
       reset();
       onCreated(ticket);
     } catch (err: unknown) {

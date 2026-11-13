@@ -9,19 +9,23 @@ import {
   Clock,
   History,
   Mail,
+  MessageSquare,
   Save,
+  Send,
   ShieldAlert,
   Wrench,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import {
+  addTicketCommentApi,
   getTicketApi,
   getTicketHistoryApi,
   listAgentEscalationsApi,
   listAssignmentGroupsApi,
   listEmailHistoryApi,
   listNotificationsApi,
+  listTicketCommentsApi,
   overrideTicketRecommendationApi,
   updateTicketApi,
 } from '../services/api';
@@ -33,6 +37,7 @@ import {
   StatusValue,
   Ticket,
   TicketCategoryValue,
+  TicketCommentEntry,
   TicketHistoryEntry,
   TicketUpdatePayload,
   UrgencyLevel,
@@ -82,6 +87,9 @@ export const TicketDetails: React.FC = () => {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [history, setHistory] = useState<TicketHistoryEntry[]>([]);
+  const [comments, setComments] = useState<TicketCommentEntry[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
   const [escalations, setEscalations] = useState<AgentEscalationRecord[]>([]);
   const [ticketNotifications, setTicketNotifications] = useState<NotificationItem[]>([]);
   const [ticketEmailLogs, setTicketEmailLogs] = useState<EmailDeliveryLogItem[]>([]);
@@ -120,15 +128,17 @@ export const TicketDetails: React.FC = () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [t, h, esc, notifs, emails] = await Promise.all([
+      const [t, h, cmts, esc, notifs, emails] = await Promise.all([
         getTicketApi(ticketId),
         getTicketHistoryApi(ticketId),
+        listTicketCommentsApi(ticketId).catch(() => []),
         listAgentEscalationsApi({ ticket_id: ticketId }).catch(() => []),
         listNotificationsApi({ ticket_id: ticketId, limit: 20 }).catch(() => ({ items: [], total: 0, unread_count: 0 })),
         listEmailHistoryApi({ ticket_id: ticketId, limit: 20 }).catch(() => []),
       ]);
       setTicket(t);
       setHistory(h);
+      setComments(cmts);
       setEscalations(esc);
       setTicketNotifications(notifs.items);
       setTicketEmailLogs(emails);
@@ -236,6 +246,41 @@ export const TicketDetails: React.FC = () => {
     }
 
     await applyUpdate(payload, `${ticket.ticket_number} saved.`);
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticket || postingComment) return;
+    const cleaned = commentText.trim();
+    if (!cleaned) return;
+    setPostingComment(true);
+    try {
+      const created = await addTicketCommentApi(ticket.id, cleaned);
+      setComments((prev) => [...prev, created]);
+      setCommentText('');
+      const [h, notifs, emails] = await Promise.all([
+        getTicketHistoryApi(ticket.id),
+        listNotificationsApi({ ticket_id: ticket.id, limit: 20 }).catch(() => ({ items: [], total: 0, unread_count: 0 })),
+        listEmailHistoryApi({ ticket_id: ticket.id, limit: 20 }).catch(() => []),
+      ]);
+      setHistory(h);
+      setTicketNotifications(notifs.items);
+      setTicketEmailLogs(emails);
+      window.dispatchEvent(new Event('nexdesk-notifications-updated'));
+      showToast({
+        type: 'success',
+        title: isAdmin ? 'Response Sent' : 'Reply Sent',
+        message: isAdmin ? 'Employee notified of your response.' : 'IT Support notified of your reply.',
+      });
+    } catch (err: unknown) {
+      showToast({
+        type: 'error',
+        title: 'Comment failed',
+        message: err instanceof Error ? err.message : 'Unable to send reply',
+      });
+    } finally {
+      setPostingComment(false);
+    }
   };
 
   if (loading) {
@@ -373,7 +418,7 @@ export const TicketDetails: React.FC = () => {
               </div>
             )}
 
-            {!isAdmin && ticket.status === 'resolved' && (
+              {!isAdmin && ticket.status === 'resolved' && (
               <button
                 onClick={() => setCloseOpen(true)}
                 className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs"
@@ -381,6 +426,77 @@ export const TicketDetails: React.FC = () => {
                 Confirm resolution &amp; close ticket
               </button>
             )}
+          </div>
+
+          {/* Ticket Comments & Replies */}
+          <div className="bg-white rounded-2xl border border-[#DCE4E3] p-6 shadow-xs space-y-4">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[#526773] flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-[#087E8B]" />
+              Comments &amp; Replies ({comments.length})
+            </h2>
+
+            {comments.length === 0 ? (
+              <p className="text-xs text-[#718096]">
+                No replies yet. {isAdmin ? 'Post a response to notify the employee.' : 'Add a reply or follow-up note for IT Support.'}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {comments.map((c) => {
+                  const byAdmin = c.author_role === 'admin';
+                  return (
+                    <div
+                      key={c.id}
+                      className={`rounded-xl border p-3.5 text-xs ${
+                        byAdmin
+                          ? 'bg-[#DCEFF0]/35 border-[#B5E1E4]'
+                          : 'bg-[#F7F8F6] border-[#DCE4E3]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-[#172B3A]">{c.author_name || 'User'}</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                              byAdmin
+                                ? 'bg-[#087E8B] text-white'
+                                : 'bg-white text-[#526773] border border-[#DCE4E3]'
+                            }`}
+                          >
+                            {byAdmin ? 'IT Admin' : 'Employee'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[#718096]">{formatDateTime(c.created_at)}</span>
+                      </div>
+                      <p className="text-[#172B3A] whitespace-pre-wrap leading-relaxed">{c.message}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <form onSubmit={handleAddComment} className="space-y-2.5 pt-2 border-t border-[#DCE4E3]">
+              <label htmlFor="ticket-comment-input" className="block text-xs font-semibold text-[#172B3A]">
+                {isAdmin ? 'Add IT Support Response' : 'Reply to Ticket'}
+              </label>
+              <textarea
+                id="ticket-comment-input"
+                rows={2}
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder={isAdmin ? 'Write a response for the employee...' : 'Provide additional details or reply to IT Support...'}
+                className={inputCls}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={postingComment || !commentText.trim()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#087E8B] hover:bg-[#075C66] disabled:opacity-50 rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{postingComment ? 'Sending...' : isAdmin ? 'Send Response' : 'Send Reply'}</span>
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* AI Escalation & Troubleshooting Handoff (Module 9) */}

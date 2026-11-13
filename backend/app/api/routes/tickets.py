@@ -1,16 +1,18 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_admin
 from app.database.session import get_db
 from app.models.assignment_group import AssignmentGroup
-from app.models.ticket import Ticket, TicketHistory
+from app.models.ticket import Ticket, TicketComment, TicketHistory
 from app.models.user import User
 from app.schemas.ticket import (
     AssignmentGroupOut,
+    TicketCommentCreate,
+    TicketCommentOut,
     TicketCreate,
     TicketHistoryOut,
     TicketListOut,
@@ -51,6 +53,7 @@ def _get_accessible_ticket(db: Session, ticket_id: int, user: User) -> Ticket:
 def create_ticket_endpoint(
     payload: TicketCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -62,7 +65,13 @@ def create_ticket_endpoint(
         "impact": payload.impact.value,
         "urgency": payload.urgency.value,
     }
-    ticket = create_ticket(db, current_user, data, ip=_client_ip(request))
+    ticket = create_ticket(
+        db,
+        current_user,
+        data,
+        ip=_client_ip(request),
+        background_tasks=background_tasks,
+    )
     return serialize_ticket(ticket)
 
 
@@ -131,6 +140,7 @@ def patch_ticket(
     ticket_id: int,
     payload: TicketUpdate,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -160,7 +170,14 @@ def patch_ticket(
             )
 
     try:
-        update_ticket(db, ticket, current_user, changes, ip=_client_ip(request))
+        update_ticket(
+            db,
+            ticket,
+            current_user,
+            changes,
+            ip=_client_ip(request),
+            background_tasks=background_tasks,
+        )
     except TicketRuleError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return serialize_ticket(ticket)
@@ -193,6 +210,89 @@ def get_ticket_history(
         }
         for h in rows
     ]
+
+
+@router.get("/{ticket_id}/comments", response_model=List[TicketCommentOut])
+def list_ticket_comments(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List scoped comments/replies on an accessible ticket."""
+    _get_accessible_ticket(db, ticket_id, current_user)
+    rows = (
+        db.query(TicketComment)
+        .options(joinedload(TicketComment.author))
+        .filter(TicketComment.ticket_id == ticket_id)
+        .order_by(TicketComment.created_at.asc(), TicketComment.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "ticket_id": c.ticket_id,
+            "author_id": c.author_id,
+            "author_name": c.author.name if c.author else "User",
+            "author_role": c.author.role if c.author else "employee",
+            "message": c.message,
+            "created_at": as_utc(c.created_at),
+        }
+        for c in rows
+    ]
+
+
+@router.post("/{ticket_id}/comments", response_model=TicketCommentOut, status_code=status.HTTP_201_CREATED)
+def add_ticket_comment(
+    ticket_id: int,
+    payload: TicketCommentCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add an employee reply or administrator response to a ticket and emit persistent notifications."""
+    ticket = _get_accessible_ticket(db, ticket_id, current_user)
+    comment = TicketComment(
+        ticket_id=ticket.id,
+        author_id=current_user.id,
+        message=payload.message,
+    )
+    db.add(comment)
+    db.add(
+        TicketHistory(
+            ticket_id=ticket.id,
+            user_id=current_user.id,
+            field_changed="comment",
+            old_value=None,
+            new_value=payload.message[:250],
+        )
+    )
+    ticket.updated_at = comment.created_at or as_utc(ticket.updated_at)
+    db.commit()
+    db.refresh(comment)
+
+    try:
+        from app.services.notifications.notification_service import notify_ticket_comment
+
+        notify_ticket_comment(
+            db,
+            ticket,
+            comment.message,
+            author=current_user,
+            comment_id=comment.id,
+            background_tasks=background_tasks,
+        )
+    except Exception:
+        pass
+
+    return {
+        "id": comment.id,
+        "ticket_id": comment.ticket_id,
+        "author_id": comment.author_id,
+        "author_name": current_user.name,
+        "author_role": current_user.role,
+        "message": comment.message,
+        "created_at": as_utc(comment.created_at),
+    }
 
 
 @groups_router.get("", response_model=List[AssignmentGroupOut])

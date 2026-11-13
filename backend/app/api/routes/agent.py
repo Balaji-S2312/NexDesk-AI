@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_admin
@@ -242,6 +242,7 @@ def admin_override_ai_recommendations(
     ticket_id: int,
     payload: AdminOverrideRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ) -> Dict[str, Any]:
@@ -282,7 +283,14 @@ def admin_override_ai_recommendations(
         changes["group_id"] = grp.id
 
     try:
-        recorded = update_ticket(db, ticket, admin_user, changes, ip=_client_ip(request))
+        recorded = update_ticket(
+            db,
+            ticket,
+            admin_user,
+            changes,
+            ip=_client_ip(request),
+            background_tasks=background_tasks,
+        )
     except TicketRuleError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 

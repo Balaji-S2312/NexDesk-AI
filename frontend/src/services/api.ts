@@ -5,6 +5,7 @@ import { DashboardStatsResponse } from '../types/dashboard';
 import {
   AssignmentGroup,
   Ticket,
+  TicketCommentEntry,
   TicketCreatePayload,
   TicketHistoryEntry,
   TicketListResponse,
@@ -141,6 +142,16 @@ export const updateTicketApi = async (id: number, payload: TicketUpdatePayload):
 
 export const getTicketHistoryApi = async (id: number): Promise<TicketHistoryEntry[]> => {
   const response = await api.get<TicketHistoryEntry[]>(`/tickets/${id}/history`);
+  return response.data;
+};
+
+export const listTicketCommentsApi = async (id: number): Promise<TicketCommentEntry[]> => {
+  const response = await api.get<TicketCommentEntry[]>(`/tickets/${id}/comments`);
+  return response.data;
+};
+
+export const addTicketCommentApi = async (id: number, message: string): Promise<TicketCommentEntry> => {
+  const response = await api.post<TicketCommentEntry>(`/tickets/${id}/comments`, { message });
   return response.data;
 };
 

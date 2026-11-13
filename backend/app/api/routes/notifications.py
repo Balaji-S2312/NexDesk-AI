@@ -20,6 +20,7 @@ from app.schemas.notification import (
 )
 from app.services.notifications.email_service import (
     get_admin_notification_email,
+    is_https_provider_configured,
     is_smtp_configured,
 )
 from app.services.notifications.notification_service import (
@@ -30,6 +31,7 @@ from app.services.notifications.notification_service import (
     mark_all_notifications_read,
     mark_notification_read,
     serialize_notification,
+    sync_sla_notifications,
 )
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -45,6 +47,12 @@ def list_notifications(
     current_user: User = Depends(get_current_user),
 ):
     """Return notifications belonging exclusively to the authenticated user."""
+    if current_user.role == "admin" and ticket_id is None:
+        try:
+            sync_sla_notifications(db)
+        except Exception:
+            pass
+
     if ticket_id is not None and current_user.role != "admin":
         ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not ticket or ticket.requester_id != current_user.id:
@@ -66,6 +74,11 @@ def get_notifications_unread_count(
     current_user: User = Depends(get_current_user),
 ):
     """Return unread notification count for the authenticated user."""
+    if current_user.role == "admin":
+        try:
+            sync_sla_notifications(db)
+        except Exception:
+            pass
     return {"unread_count": get_unread_count(db, current_user)}
 
 
@@ -129,12 +142,17 @@ def get_notification_config(
     _admin: User = Depends(require_admin),
 ):
     """Admin-only sanitized view of SMTP & notification routing settings (never returns SMTP_PASSWORD)."""
+    has_https = is_https_provider_configured()
+    smtp_ready = is_smtp_configured()
+    transport = "https_api" if has_https else ("smtp" if smtp_ready else "none")
     return {
         "admin_notification_email": get_admin_notification_email(),
-        "smtp_configured": is_smtp_configured(),
+        "smtp_configured": smtp_ready,
         "smtp_host": settings.SMTP_HOST or "",
         "smtp_port": int(settings.SMTP_PORT),
         "smtp_from_email": settings.SMTP_FROM_EMAIL,
         "smtp_from_name": settings.SMTP_FROM_NAME,
         "smtp_use_tls": bool(settings.SMTP_USE_TLS),
+        "https_provider_configured": has_https,
+        "email_transport": transport,
     }

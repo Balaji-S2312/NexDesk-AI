@@ -5,6 +5,8 @@ NexDesk AI branding with white/navy/blue/orange styling, clear info cards, and m
 import html
 from typing import Any, Dict, List, Optional
 
+from app.core.config import settings
+
 
 def _escape(val: Any) -> str:
     return html.escape(str(val) if val is not None else "")
@@ -71,7 +73,7 @@ def _base_email_shell(title: str, content_html: str, action_url: Optional[str] =
                 &copy; NexDesk AI Enterprise Service Management Platform &bull; Automated System Dispatch
               </p>
               <p style="font-size: 11px; color: #94A3B8; margin: 4px 0 0 0;">
-                Sender: balaji.poet2312s@gmail.com &bull; Confidential IT Support Communication
+                Sender: {_escape(settings.SMTP_FROM_EMAIL)} &bull; Confidential IT Support Communication
               </p>
             </td>
           </tr>
@@ -252,7 +254,7 @@ You can track the progress of your incident here:
 
 Regards,
 NexDesk AI IT Service Desk
-balaji.poet2312s@gmail.com
+{settings.SMTP_FROM_EMAIL}
 """
 
     html_body = _base_email_shell(
@@ -355,7 +357,7 @@ You can open NexDesk AI to view the latest ticket details:
 
 Regards,
 NexDesk AI IT Service Desk
-balaji.poet2312s@gmail.com
+{settings.SMTP_FROM_EMAIL}
 """
 
     html_body = _base_email_shell(

@@ -16,6 +16,7 @@ import {
   markAllNotificationsReadApi,
   markNotificationReadApi,
 } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 import { NotificationItem } from '../types/notification';
 
 const formatTimeAgo = (iso: string): string => {
@@ -31,22 +32,34 @@ const formatTimeAgo = (iso: string): string => {
 };
 
 const iconForType = (type: string) => {
-  if (type === 'ticket_resolved' || type === 'ticket_resolved_confirmation') {
+  if (type === 'ticket_resolved' || type === 'ticket_resolved_confirmation' || type === 'ticket_closed') {
     return <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />;
   }
   if (type === 'ticket_assigned') {
     return <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />;
   }
-  if (type === 'new_incident_alert') {
+  if (
+    type === 'new_incident_alert' ||
+    type === 'high_priority_alert' ||
+    type === 'ticket_escalated' ||
+    type === 'sla_breached' ||
+    type === 'sla_approaching'
+  ) {
     return <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />;
   }
-  if (type === 'ticket_status_updated') {
+  if (
+    type === 'ticket_status_updated' ||
+    type === 'ticket_priority_updated' ||
+    type === 'admin_comment' ||
+    type === 'employee_reply'
+  ) {
     return <RefreshCw className="w-4 h-4 text-sky-600 shrink-0" />;
   }
   return <TicketIcon className="w-4 h-4 text-blue-600 shrink-0" />;
 };
 
 export const NotificationBell: React.FC = () => {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,15 +70,24 @@ export const NotificationBell: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const refreshUnread = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadCount(0);
+      return;
+    }
     try {
       const res = await getUnreadNotificationCountApi();
       setUnreadCount(res.unread_count);
     } catch {
       // Keep UI resilient if transient network check fails
     }
-  }, []);
+  }, [user?.id]);
 
   const loadDropdown = useCallback(async () => {
+    if (!user?.id) {
+      setItems([]);
+      setUnreadCount(0);
+      return;
+    }
     setLoading(true);
     try {
       const res = await listNotificationsApi({ limit: 8 });
@@ -76,11 +98,26 @@ export const NotificationBell: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
+    setItems([]);
+    setUnreadCount(0);
+    setOpen(false);
+    if (user?.id) {
+      refreshUnread();
+    }
+  }, [user?.id, refreshUnread]);
+
+  useEffect(() => {
+    if (!user?.id) return;
     refreshUnread();
-    const interval = setInterval(refreshUnread, 25_000);
+    const interval = setInterval(() => {
+      refreshUnread();
+      if (open) {
+        loadDropdown();
+      }
+    }, 10_000);
     const onEvent = () => {
       refreshUnread();
       if (open) {
@@ -92,7 +129,7 @@ export const NotificationBell: React.FC = () => {
       clearInterval(interval);
       window.removeEventListener('nexdesk-notifications-updated', onEvent);
     };
-  }, [refreshUnread, loadDropdown, open]);
+  }, [user?.id, refreshUnread, loadDropdown, open]);
 
   useEffect(() => {
     refreshUnread();

@@ -35,16 +35,27 @@ const deliveryBadgeCls = (status: string) => {
 };
 
 const iconForType = (type: string) => {
-  if (type === 'ticket_resolved' || type === 'ticket_resolved_confirmation') {
+  if (type === 'ticket_resolved' || type === 'ticket_resolved_confirmation' || type === 'ticket_closed') {
     return <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />;
   }
   if (type === 'ticket_assigned') {
     return <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />;
   }
-  if (type === 'new_incident_alert') {
+  if (
+    type === 'new_incident_alert' ||
+    type === 'high_priority_alert' ||
+    type === 'ticket_escalated' ||
+    type === 'sla_breached' ||
+    type === 'sla_approaching'
+  ) {
     return <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />;
   }
-  if (type === 'ticket_status_updated') {
+  if (
+    type === 'ticket_status_updated' ||
+    type === 'ticket_priority_updated' ||
+    type === 'admin_comment' ||
+    type === 'employee_reply'
+  ) {
     return <RefreshCw className="w-4 h-4 text-sky-600 shrink-0" />;
   }
   return <TicketIcon className="w-4 h-4 text-blue-600 shrink-0" />;
@@ -63,8 +74,8 @@ export const Notifications: React.FC = () => {
   const [configStatus, setConfigStatus] = useState<NotificationConfigStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [notifRes, emailRes, cfgRes] = await Promise.all([
         listNotificationsApi({ unread_only: unreadOnly, limit: 100 }),
@@ -76,18 +87,27 @@ export const Notifications: React.FC = () => {
       setEmailLogs(emailRes);
       setConfigStatus(cfgRes);
     } catch (err: unknown) {
-      showToast({
-        type: 'error',
-        title: 'Notification load failed',
-        message: err instanceof Error ? err.message : 'Unable to fetch notifications',
-      });
+      if (!silent) {
+        showToast({
+          type: 'error',
+          title: 'Notification load failed',
+          message: err instanceof Error ? err.message : 'Unable to fetch notifications',
+        });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [unreadOnly, isAdmin, showToast]);
 
   useEffect(() => {
-    loadAll();
+    loadAll(false);
+    const interval = setInterval(() => loadAll(true), 15_000);
+    const onUpdated = () => loadAll(true);
+    window.addEventListener('nexdesk-notifications-updated', onUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('nexdesk-notifications-updated', onUpdated);
+    };
   }, [loadAll]);
 
   const handleMarkRead = async (item: NotificationItem) => {
@@ -158,7 +178,7 @@ export const Notifications: React.FC = () => {
         <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={loadAll}
+            onClick={() => loadAll(false)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-[#EFF3F1] text-[#172B3A] border border-[#DCE4E3] text-xs font-semibold shadow-2xs transition-colors"
           >
@@ -214,14 +234,18 @@ export const Notifications: React.FC = () => {
           <div className="flex items-center gap-2">
             <span
               className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                configStatus.smtp_configured
+                configStatus.https_provider_configured
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : configStatus.smtp_configured
+                  ? 'bg-sky-50 text-sky-700 border-sky-200'
                   : 'bg-amber-50 text-amber-700 border-amber-200'
               }`}
             >
-              {configStatus.smtp_configured
-                ? `SMTP Ready (${configStatus.smtp_host}:${configStatus.smtp_port})`
-                : 'SMTP Not Configured — In-App Active'}
+              {configStatus.https_provider_configured
+                ? 'HTTPS Email API Ready (Port 443)'
+                : configStatus.smtp_configured
+                ? `SMTP Configured (${configStatus.smtp_host}:${configStatus.smtp_port} — In-App Always Active)`
+                : 'Email Not Configured — In-App Active'}
             </span>
           </div>
         </div>

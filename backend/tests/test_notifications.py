@@ -389,3 +389,218 @@ def test_e2e_13_step_acceptance_scenario(monkeypatch):
         # Confirm emails sent to employee email and admin email across lifecycle
         assert any(to == emp_email and "Resolved" in subj for to, subj in dispatched)
         assert any(to == "bb7578167@gmail.com" and "Resolved" in subj for to, subj in dispatched)
+
+
+def test_registration_comments_priority_closure_and_sla_notifications(monkeypatch):
+    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "bb7578167@gmail.com")
+    monkeypatch.setattr(settings, "ADMIN_EMAIL", "bb7578167@gmail.com")
+    monkeypatch.setattr(settings, "SMTP_PASSWORD", "")
+
+    admin_headers, _ = _login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)
+    emp_headers, emp_user, emp_email = _register_and_login("Alert Employee")
+    other_headers, _, _ = _register_and_login("Other Employee")
+
+    # 1. Registration notified admins
+    admin_notifs = client.get("/api/notifications?limit=100", headers=admin_headers).json()["items"]
+    assert any(
+        n["notification_type"] == "user_registered" and emp_email in n["message"]
+        for n in admin_notifs
+    )
+
+    # 2. Critical priority ticket (impact=high + urgency=high) triggers employee + admin + high_priority_alert
+    create_res = client.post(
+        "/api/tickets",
+        json=_ticket_payload(
+            title="Core production firewall outage",
+            impact="high",
+            urgency="high",
+        ),
+        headers=emp_headers,
+    )
+    assert create_res.status_code == 201, create_res.text
+    ticket = create_res.json()
+    tid = ticket["id"]
+    assert ticket["priority"] == "critical"
+
+    emp_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=emp_headers).json()["items"]
+    assert any(n["notification_type"] == "ticket_submitted" for n in emp_notifs)
+
+    admin_ticket_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=admin_headers).json()["items"]
+    admin_types = {n["notification_type"] for n in admin_ticket_notifs}
+    assert "new_incident_alert" in admin_types
+    assert "high_priority_alert" in admin_types
+
+    # 3. Employee reply notifies admins; Admin comment notifies employee; cross-employee access blocked
+    reply_res = client.post(
+        f"/api/tickets/{tid}/comments",
+        json={"message": "We tested from two office subnets and both timed out."},
+        headers=emp_headers,
+    )
+    assert reply_res.status_code == 201, reply_res.text
+    assert reply_res.json()["author_role"] == "employee"
+
+    assert (
+        client.get(f"/api/tickets/{tid}/comments", headers=other_headers).status_code == 404
+    )
+    assert (
+        client.post(
+            f"/api/tickets/{tid}/comments",
+            json={"message": "Unauthorized peek"},
+            headers=other_headers,
+        ).status_code == 404
+    )
+
+    admin_ticket_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=admin_headers).json()["items"]
+    assert any(n["notification_type"] == "employee_reply" for n in admin_ticket_notifs)
+
+    admin_comment_res = client.post(
+        f"/api/tickets/{tid}/comments",
+        json={"message": "Network team captured packet trace and is updating ACL rules."},
+        headers=admin_headers,
+    )
+    assert admin_comment_res.status_code == 201, admin_comment_res.text
+    assert admin_comment_res.json()["author_role"] == "admin"
+
+    emp_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=emp_headers).json()["items"]
+    assert any(
+        n["notification_type"] == "admin_comment" and "updating ACL rules" in n["message"]
+        for n in emp_notifs
+    )
+
+    comments_list = client.get(f"/api/tickets/{tid}/comments", headers=emp_headers).json()
+    assert len(comments_list) == 2
+
+    # 4. Admin closure creates ticket_closed for both employee and admin
+    close_res = client.patch(
+        f"/api/tickets/{tid}",
+        json={"status": "closed", "resolution_notes": "Confirmed firewall ACL restored."},
+        headers=admin_headers,
+    )
+    assert close_res.status_code == 200
+    emp_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=emp_headers).json()["items"]
+    admin_ticket_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=admin_headers).json()["items"]
+    assert any(n["notification_type"] == "ticket_closed" for n in emp_notifs)
+    assert any(n["notification_type"] == "ticket_closed" for n in admin_ticket_notifs)
+
+    # 5. Priority escalation notifies both employee and admins; SLA breach notifies admins idempotently
+    from datetime import datetime, timedelta, timezone
+
+    sla_ticket_res = client.post(
+        "/api/tickets",
+        json=_ticket_payload(title="SLA Breach Monitoring Ticket", impact="low", urgency="low"),
+        headers=emp_headers,
+    )
+    assert sla_ticket_res.status_code == 201, sla_ticket_res.text
+    sla_tid = sla_ticket_res.json()["id"]
+
+    esc_res = client.patch(
+        f"/api/tickets/{sla_tid}",
+        json={"impact": "high", "urgency": "high"},
+        headers=admin_headers,
+    )
+    assert esc_res.status_code == 200
+    assert esc_res.json()["priority"] == "critical"
+    admin_esc_notifs = client.get(f"/api/notifications?ticket_id={sla_tid}", headers=admin_headers).json()["items"]
+    assert any(n["notification_type"] in ("high_priority_alert", "ticket_priority_updated") for n in admin_esc_notifs)
+
+    db = TestingSessionLocal()
+    try:
+        sla_ticket = db.query(Ticket).filter(Ticket.id == sla_tid).first()
+        assert sla_ticket is not None
+        sla_ticket.created_at = datetime.now(timezone.utc) - timedelta(hours=12)
+        sla_ticket.sla_deadline = datetime.now(timezone.utc) - timedelta(minutes=15)
+        db.commit()
+    finally:
+        db.close()
+
+    # Trigger sync via admin notifications read twice and verify exactly one breach notification per admin
+    client.get("/api/notifications", headers=admin_headers)
+    first_breach_notifs = [
+        n
+        for n in client.get(f"/api/notifications?ticket_id={sla_tid}", headers=admin_headers).json()["items"]
+        if n["notification_type"] == "sla_breached"
+    ]
+    assert len(first_breach_notifs) >= 1
+    client.get("/api/notifications", headers=admin_headers)
+    second_breach_notifs = [
+        n
+        for n in client.get(f"/api/notifications?ticket_id={sla_tid}", headers=admin_headers).json()["items"]
+        if n["notification_type"] == "sla_breached"
+    ]
+    assert len(second_breach_notifs) == len(first_breach_notifs)
+
+
+def test_production_smtp_unreachable_fails_fast_and_does_not_block_ticket_creation(monkeypatch):
+    import errno
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "")
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "")
+    monkeypatch.setattr(settings, "SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setattr(settings, "SMTP_PORT", 587)
+    monkeypatch.setattr(settings, "SMTP_USERNAME", "sender@nexdesk.ai")
+    monkeypatch.setattr(settings, "SMTP_PASSWORD", "app-password")
+    monkeypatch.setattr(settings, "ADMIN_NOTIFICATION_EMAIL", "bb7578167@gmail.com")
+
+    emp_headers, _, emp_email = _register_and_login("Fast Fail Employee")
+
+    smtp_calls = {"count": 0}
+
+    class UnreachableSMTP:
+        def __init__(self, *args, **kwargs):
+            smtp_calls["count"] += 1
+            raise OSError(errno.ENETUNREACH, "Network is unreachable")
+
+    with patch("app.services.notifications.email_service.smtplib.SMTP", UnreachableSMTP):
+        res = client.post(
+            "/api/tickets",
+            json=_ticket_payload(title="Ticket during Render SMTP block"),
+            headers=emp_headers,
+        )
+        assert res.status_code == 201
+        tid = res.json()["id"]
+
+    # Production SMTP failures fail fast with 1 attempt per email (employee + admin = 2 calls, no retries)
+    assert smtp_calls["count"] == 2
+    emp_notifs = client.get(f"/api/notifications?ticket_id={tid}", headers=emp_headers).json()["items"]
+    assert any(n["notification_type"] == "ticket_submitted" for n in emp_notifs)
+
+    db = TestingSessionLocal()
+    try:
+        logs = db.query(EmailDeliveryLog).filter(EmailDeliveryLog.ticket_id == tid).all()
+        assert len(logs) >= 2
+        assert all(log.delivery_status == "failed" and log.attempt_count == 1 for log in logs)
+    finally:
+        db.close()
+
+    # Now verify HTTPS Email API (Resend) takes precedence over SMTP in production when configured
+    admin_headers, _ = _login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "re_test_key_123")
+    cfg = client.get("/api/notifications/config", headers=admin_headers).json()
+    assert cfg["https_provider_configured"] is True
+    assert cfg["email_transport"] == "https_api"
+
+    mock_http_resp = MagicMock()
+    mock_http_resp.status = 200
+    mock_http_resp.__enter__.return_value = mock_http_resp
+    mock_http_resp.__exit__.return_value = False
+
+    with patch("app.services.notifications.email_service.urllib.request.urlopen", return_value=mock_http_resp) as mock_open:
+        db = TestingSessionLocal()
+        try:
+            log = send_email(
+                db,
+                recipient_email=emp_email,
+                subject="HTTPS Delivery Test",
+                html_body="<p>Delivered via HTTPS</p>",
+                text_body="Delivered via HTTPS",
+                event_type="https_test",
+                event_key=f"https_test:{tid}",
+                ticket_id=tid,
+            )
+            assert log.delivery_status == "sent"
+            assert log.attempt_count == 1
+            assert mock_open.called
+        finally:
+            db.close()
+

@@ -110,3 +110,25 @@ class AssignmentGroupOut(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+
+
+class TicketCommentCreate(BaseModel):
+    message: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("message")
+    @classmethod
+    def clean_non_blank(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if not cleaned:
+            raise ValueError("Comment message cannot be blank")
+        return cleaned
+
+
+class TicketCommentOut(BaseModel):
+    id: int
+    ticket_id: int
+    author_id: Optional[int] = None
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+    message: str
+    created_at: datetime

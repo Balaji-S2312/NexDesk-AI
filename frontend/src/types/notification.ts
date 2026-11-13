@@ -43,4 +43,6 @@ export interface NotificationConfigStatus {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  https_provider_configured?: boolean;
+  email_transport?: string;
 }

@@ -78,7 +78,7 @@ CORS_ORIGINS=["https://your-frontend.vercel.app"]
 FRONTEND_BASE_URL=https://your-frontend.vercel.app
 BACKEND_PUBLIC_URL=https://your-backend.onrender.com
 
-# Gmail SMTP Email Dispatch
+# Gmail SMTP Email Dispatch (local/hosts with SMTP egress)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=balaji.poet2312s@gmail.com
@@ -86,8 +86,12 @@ SMTP_PASSWORD=<your-16-char-gmail-app-password>
 SMTP_FROM_EMAIL=balaji.poet2312s@gmail.com
 SMTP_FROM_NAME=NexDesk AI – IT Service Desk
 SMTP_USE_TLS=true
-ADMIN_NOTIFICATION_EMAIL=balaji.poet2312s@gmail.com
-ADMIN_EMAIL=balaji.poet2312s@gmail.com
+ADMIN_NOTIFICATION_EMAIL=bb7578167@gmail.com
+ADMIN_EMAIL=bb7578167@gmail.com
+
+# Recommended for Render Free Tier (HTTPS Port 443 Email API; takes priority over SMTP)
+RESEND_API_KEY=<optional-resend-api-key>
+BREVO_API_KEY=<optional-brevo-api-key>
 ```
 
 ### Frontend Environment Variables (`frontend`)

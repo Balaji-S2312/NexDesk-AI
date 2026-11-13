@@ -60,6 +60,12 @@ def register(
             detail="An account with this email address already exists.",
         )
     db.refresh(new_user)
+    try:
+        from app.services.notifications.notification_service import notify_user_registered
+
+        notify_user_registered(db, new_user)
+    except Exception as exc:
+        logger.warning("Admin registration notification failed gracefully: %s", exc)
     return new_user
 
 

@@ -104,8 +104,12 @@ def is_smtp_configured() -> bool:
 
 
 def get_admin_notification_email() -> str:
-    configured = (settings.ADMIN_NOTIFICATION_EMAIL or "").strip()
-    return configured if is_valid_email(configured) else "balaji.poet2312s@gmail.com"
+    """Resolve centralized administrator notification email from Settings."""
+    for candidate in (settings.ADMIN_NOTIFICATION_EMAIL, settings.ADMIN_EMAIL):
+        cleaned = (candidate or "").strip()
+        if is_valid_email(cleaned):
+            return cleaned
+    return "admin@nexdesk.ai"
 
 
 def _sanitize_smtp_error(err: Exception) -> str:
@@ -208,10 +212,12 @@ def describe_delivery_status(log_row: Optional[EmailDeliveryLog]) -> tuple[str, 
 
 def _deliver_smtp_message(msg: EmailMessage) -> None:
     """Open SMTP connection using environment configuration and send EmailMessage."""
+    is_prod = (settings.ENVIRONMENT or "").strip().lower() == "production"
+    timeout_s = min(4, int(settings.SMTP_TIMEOUT_SECONDS)) if is_prod else int(settings.SMTP_TIMEOUT_SECONDS)
     with smtplib.SMTP(
         settings.SMTP_HOST.strip(),
         int(settings.SMTP_PORT),
-        timeout=int(settings.SMTP_TIMEOUT_SECONDS),
+        timeout=max(2, timeout_s),
     ) as server:
         if settings.SMTP_USE_TLS:
             server.starttls()
@@ -330,7 +336,9 @@ def send_email(
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
 
-    max_attempts = max(1, int(settings.SMTP_MAX_RETRIES))
+    is_prod = (settings.ENVIRONMENT or "").strip().lower() == "production"
+    has_https = is_https_provider_configured()
+    max_attempts = 1 if (is_prod and not has_https) else max(1, int(settings.SMTP_MAX_RETRIES))
     attempts = 0
     last_error: Optional[str] = None
     sent_at: Optional[datetime] = None
@@ -347,26 +355,16 @@ def send_email(
     for _ in range(max_attempts):
         attempts += 1
         try:
-            if has_smtp_creds:
-                try:
-                    _deliver_smtp_message(msg)
-                except (smtplib.SMTPException, OSError, TimeoutError) as smtp_exc:
-                    if is_https_provider_configured():
-                        _deliver_via_https_api(
-                            recipient_email=clean_recipient,
-                            subject=subject,
-                            html_body=html_body,
-                            text_body=text_body,
-                        )
-                    else:
-                        raise smtp_exc
-            elif is_https_provider_configured():
+            # Prefer HTTPS port-443 email providers when configured (never blocked by PaaS SMTP firewalls).
+            if has_https:
                 _deliver_via_https_api(
                     recipient_email=clean_recipient,
                     subject=subject,
                     html_body=html_body,
                     text_body=text_body,
                 )
+            elif has_smtp_creds:
+                _deliver_smtp_message(msg)
             sent_at = _utc_now()
             last_error = None
             break
@@ -380,6 +378,10 @@ def send_email(
                 ticket_number,
                 last_error,
             )
+            # Fail fast when outbound network/SMTP ports are blocked by the host environment.
+            err_code = getattr(exc, "errno", None)
+            if err_code in (errno.ENETUNREACH, 101, getattr(errno, "EHOSTUNREACH", 113), 113):
+                break
 
     status_val = "sent" if sent_at is not None else "failed"
     try:
@@ -712,5 +714,83 @@ def send_ticket_resolution_email(
         recipient_user_id=None,
         recipient_verified=True,
     )
+
+
+def send_ticket_comment_email(
+    db: Session,
+    ticket: Ticket,
+    comment_text: str,
+    author: User,
+    comment_id: int,
+) -> None:
+    requester = ticket.requester or db.query(User).filter(User.id == ticket.requester_id).first()
+    if not requester:
+        return
+    ticket_num = ticket.ticket_number or f"INC{ticket.id:07d}"
+    status_label = STATUS_LABELS.get(ticket.status, ticket.status.title())
+    updated_str = _utc_now().strftime("%Y-%m-%d %H:%M UTC")
+    preview = (comment_text or "").strip()[:400]
+    url = _ticket_url(ticket)
+
+    from app.services.email_templates import render_ticket_field_update_email
+
+    if author.role == "admin":
+        tpl = render_ticket_field_update_email(
+            employee_name=requester.name,
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            field_name="IT Support Comment",
+            old_value="No new reply",
+            new_value=preview,
+            assigned_group=ticket.group.name if ticket.group else None,
+            updated_by_name=author.name,
+            current_status=status_label,
+            resolution_notes=None,
+            updated_at=updated_str,
+            ticket_url=url,
+        )
+        send_email(
+            db,
+            recipient_email=requester.email,
+            subject=f"[NexDesk AI] IT Support Comment on {ticket_num}",
+            html_body=tpl["html_body"],
+            text_body=tpl["text_body"],
+            event_type="admin_comment",
+            event_key=f"email:ticket_comment:{comment_id}:employee:{requester.id}",
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            recipient_user_id=requester.id,
+            recipient_verified=bool(getattr(requester, "email_verified", False)),
+        )
+    else:
+        admin_email = get_admin_notification_email()
+        tpl = render_ticket_field_update_email(
+            employee_name="NexDesk Administrator",
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            field_name="Employee Reply",
+            old_value=requester.name,
+            new_value=preview,
+            assigned_group=ticket.group.name if ticket.group else None,
+            updated_by_name=author.name,
+            current_status=status_label,
+            resolution_notes=None,
+            updated_at=updated_str,
+            ticket_url=url,
+        )
+        send_email(
+            db,
+            recipient_email=admin_email,
+            subject=f"[NexDesk AI] Employee Reply on {ticket_num} — {author.name}",
+            html_body=tpl["html_body"],
+            text_body=tpl["text_body"],
+            event_type="employee_reply",
+            event_key=f"email:ticket_comment:{comment_id}:admin",
+            ticket_id=ticket.id,
+            ticket_number=ticket_num,
+            recipient_user_id=None,
+            recipient_verified=True,
+        )
+
 
 

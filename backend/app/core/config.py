@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     SMTP_STARTTLS: bool = True
     SMTP_MAX_RETRIES: int = 2
     SMTP_TIMEOUT_SECONDS: int = 10
-    ADMIN_NOTIFICATION_EMAIL: str = "balaji.poet2312s@gmail.com"
-    ADMIN_EMAIL: str = "balaji.poet2312s@gmail.com"
+    ADMIN_NOTIFICATION_EMAIL: str = "bb7578167@gmail.com"
+    ADMIN_EMAIL: str = "bb7578167@gmail.com"
     ADMIN_SEED_EMAIL: str = ""
     ADMIN_SEED_PASSWORD: str = ""
     SEED_DEMO_ACCOUNTS: bool = True
@@ -105,8 +105,8 @@ class Settings(BaseSettings):
                 warnings.append("SQLite DATABASE_URL detected in production; persistent managed PostgreSQL is strongly recommended.")
             if not self.GROQ_API_KEY:
                 warnings.append("GROQ_API_KEY is not configured; AI assistant/classification will use deterministic fallbacks.")
-            if not self.SMTP_PASSWORD:
-                warnings.append("SMTP_PASSWORD is not configured; outbound emails will log as skipped_unconfigured while in-app alerts remain active.")
+            if not self.SMTP_PASSWORD and not self.RESEND_API_KEY and not self.BREVO_API_KEY:
+                warnings.append("Neither HTTPS Email API nor SMTP_PASSWORD is configured; outbound emails will log as skipped_unconfigured while in-app alerts remain active.")
             if any("localhost" in o or "127.0.0.1" in o for o in self.CORS_ORIGINS):
                 warnings.append("CORS_ORIGINS still contains localhost/127.0.0.1 in production mode.")
         return warnings

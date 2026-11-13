@@ -668,7 +668,10 @@ def tool_create_ticket_after_confirmation(
     db.refresh(ticket)
     if group_info.get("group_id"):
         try:
-            from app.services.notifications.notification_service import notify_ticket_assigned
+            from app.services.notifications.notification_service import (
+                notify_ticket_assigned,
+                notify_ticket_escalated,
+            )
 
             notify_ticket_assigned(
                 db,
@@ -677,8 +680,16 @@ def tool_create_ticket_after_confirmation(
                 actor=user,
                 event_token=f"{ticket.id}:agent_assign:{group_info['assignment_group']}",
             )
+            if should_escalate:
+                notify_ticket_escalated(
+                    db,
+                    ticket,
+                    group_info["assignment_group"],
+                    payload.get("escalation_summary") or payload.get("summary") or final_title,
+                    actor=user,
+                )
         except Exception as exc:
-            logger.warning("Agent post-confirm assignment notification failed for %s: %s", ticket.ticket_number, exc)
+            logger.warning("Agent post-confirm notification failed for %s: %s", ticket.ticket_number, exc)
 
     ticket_loaded = (
         db.query(Ticket)
@@ -834,6 +845,20 @@ def tool_escalate_to_human(
     )
     db.commit()
     db.refresh(esc)
+    if ticket is not None:
+        try:
+            from app.services.notifications.notification_service import notify_ticket_escalated
+
+            notify_ticket_escalated(
+                db,
+                ticket,
+                group_info["assignment_group"],
+                cleaned_reason,
+                actor=user,
+                event_token=f"{ticket.id}:esc:{esc.id}",
+            )
+        except Exception as exc:
+            logger.warning("Escalation notification failed for %s: %s", ticket.ticket_number, exc)
     return serialize_escalation(esc)
 
 

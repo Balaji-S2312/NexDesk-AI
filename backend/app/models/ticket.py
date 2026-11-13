@@ -38,9 +38,27 @@ class Ticket(Base):
     sla_policy = relationship("SLAPolicy", back_populates="tickets")
     conversations = relationship("Conversation", back_populates="ticket", cascade="all, delete-orphan")
     histories = relationship("TicketHistory", back_populates="ticket", cascade="all, delete-orphan")
+    comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Ticket id={self.id} title='{self.title[:30]}' status='{self.status}'>"
+
+
+class TicketComment(Base):
+    __tablename__ = "ticket_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+    # Relationships
+    ticket = relationship("Ticket", back_populates="comments")
+    author = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<TicketComment id={self.id} ticket_id={self.ticket_id} author_id={self.author_id}>"
 
 
 class TicketHistory(Base):

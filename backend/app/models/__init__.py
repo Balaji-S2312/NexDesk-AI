@@ -1,7 +1,7 @@
 from app.models.user import User
 from app.models.assignment_group import AssignmentGroup
 from app.models.sla_policy import SLAPolicy
-from app.models.ticket import Ticket, TicketHistory
+from app.models.ticket import Ticket, TicketComment, TicketHistory
 from app.models.conversation import Conversation, Message
 from app.models.document import Document
 from app.models.audit_log import AuditLog
@@ -13,6 +13,7 @@ __all__ = [
     "AssignmentGroup",
     "SLAPolicy",
     "Ticket",
+    "TicketComment",
     "TicketHistory",
     "Conversation",
     "Message",

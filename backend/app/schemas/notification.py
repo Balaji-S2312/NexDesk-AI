@@ -62,3 +62,5 @@ class NotificationConfigOut(BaseModel):
     smtp_from_email: str
     smtp_from_name: str
     smtp_use_tls: bool
+    https_provider_configured: bool = False
+    email_transport: str = "smtp"

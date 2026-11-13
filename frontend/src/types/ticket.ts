@@ -62,6 +62,16 @@ export interface TicketHistoryEntry {
   created_at: string;
 }
 
+export interface TicketCommentEntry {
+  id: number;
+  ticket_id: number;
+  author_id: number | null;
+  author_name: string | null;
+  author_role: string | null;
+  message: string;
+  created_at: string;
+}
+
 export interface TicketCreatePayload {
   title: string;
   description: string;
