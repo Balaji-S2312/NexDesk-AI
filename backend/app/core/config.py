@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = ""
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
     RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = ""
     BREVO_API_KEY: str = ""
     ALLOW_RESERVED_EMAIL_DOMAINS: bool = False
     

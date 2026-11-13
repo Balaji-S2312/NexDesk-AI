@@ -616,6 +616,8 @@ def test_production_smtp_unreachable_fails_fast_and_does_not_block_ticket_creati
     # Now verify HTTPS Email API (Resend) takes precedence over SMTP in production when configured
     admin_headers, _ = _login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)
     monkeypatch.setattr(settings, "RESEND_API_KEY", "re_test_key_123")
+    monkeypatch.setattr(settings, "SMTP_FROM_EMAIL", "balaji.poet2312s@gmail.com")
+    monkeypatch.setattr(settings, "RESEND_FROM_EMAIL", "")
     cfg = client.get("/api/notifications/config", headers=admin_headers).json()
     assert cfg["https_provider_configured"] is True
     assert cfg["email_transport"] == "https_api"
@@ -641,6 +643,10 @@ def test_production_smtp_unreachable_fails_fast_and_does_not_block_ticket_creati
             assert log.delivery_status == "sent"
             assert log.attempt_count == 1
             assert mock_open.called
+            sent_req = mock_open.call_args[0][0]
+            assert sent_req.headers.get("User-agent") == "NexDesk-AI/1.0"
+            import json as _json
+            assert "onboarding@resend.dev" in _json.loads(sent_req.data.decode("utf-8"))["from"]
         finally:
             db.close()
 

@@ -157,50 +157,69 @@ def _deliver_via_https_api(
     from_email = (settings.SMTP_FROM_EMAIL or "").strip()
     timeout_s = max(5, int(settings.SMTP_TIMEOUT_SECONDS))
 
-    resend_key = (settings.RESEND_API_KEY or "").strip()
-    if resend_key:
-        payload = json.dumps({
-            "from": f"{from_name} <{from_email}>",
-            "to": [recipient_email],
-            "subject": subject.replace("\r", "").replace("\n", ""),
-            "html": html_body,
-            "text": text_body,
-        }).encode("utf-8")
+    def _post_json(url: str, headers: dict, body_dict: dict, provider_label: str) -> None:
         req = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=payload,
+            url,
+            data=json.dumps(body_dict).encode("utf-8"),
             headers={
-                "Authorization": f"Bearer {resend_key}",
                 "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "NexDesk-AI/1.0",
+                **headers,
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            if resp.status < 200 or resp.status >= 300:
-                raise RuntimeError(f"Resend API rejected request with HTTP {resp.status}.")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                if resp.status < 200 or resp.status >= 300:
+                    raise RuntimeError(f"{provider_label} API rejected request with HTTP {resp.status}.")
+        except urllib.error.HTTPError as exc:
+            err_body = ""
+            try:
+                err_body = exc.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                pass
+            detail = err_body or str(exc)
+            raise RuntimeError(f"{provider_label} API error ({exc.code}): {detail}") from exc
+
+    resend_key = (settings.RESEND_API_KEY or "").strip()
+    if resend_key:
+        custom_resend_from = (getattr(settings, "RESEND_FROM_EMAIL", "") or "").strip()
+        if is_valid_email(custom_resend_from):
+            resend_from = custom_resend_from
+        else:
+            domain_part = from_email.rsplit("@", 1)[-1].lower() if "@" in from_email else ""
+            public_domains = {"gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com"}
+            resend_from = "onboarding@resend.dev" if (not from_email or domain_part in public_domains) else from_email
+
+        _post_json(
+            "https://api.resend.com/emails",
+            {"Authorization": f"Bearer {resend_key}"},
+            {
+                "from": f"{from_name} <{resend_from}>",
+                "to": [recipient_email],
+                "subject": subject.replace("\r", "").replace("\n", ""),
+                "html": html_body,
+                "text": text_body,
+            },
+            "Resend",
+        )
         return "resend"
 
     brevo_key = (settings.BREVO_API_KEY or "").strip()
     if brevo_key:
-        payload = json.dumps({
-            "sender": {"name": from_name, "email": from_email},
-            "to": [{"email": recipient_email}],
-            "subject": subject.replace("\r", "").replace("\n", ""),
-            "htmlContent": html_body,
-            "textContent": text_body,
-        }).encode("utf-8")
-        req = urllib.request.Request(
+        _post_json(
             "https://api.brevo.com/v3/smtp/email",
-            data=payload,
-            headers={
-                "api-key": brevo_key,
-                "Content-Type": "application/json",
+            {"api-key": brevo_key},
+            {
+                "sender": {"name": from_name, "email": from_email},
+                "to": [{"email": recipient_email}],
+                "subject": subject.replace("\r", "").replace("\n", ""),
+                "htmlContent": html_body,
+                "textContent": text_body,
             },
-            method="POST",
+            "Brevo",
         )
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            if resp.status < 200 or resp.status >= 300:
-                raise RuntimeError(f"Brevo API rejected request with HTTP {resp.status}.")
         return "brevo"
 
     return None
@@ -388,9 +407,9 @@ def send_email(
                 ticket_number,
                 last_error,
             )
-            # Fail fast when outbound network/SMTP ports are blocked by the host environment.
+            # Fail fast when outbound SMTP ports are blocked or provider returns HTTP 4xx validation errors.
             err_code = getattr(exc, "errno", None)
-            if err_code in (errno.ENETUNREACH, 101, getattr(errno, "EHOSTUNREACH", 113), 113):
+            if err_code in (errno.ENETUNREACH, 101, getattr(errno, "EHOSTUNREACH", 113), 113) or "API error (4" in last_error:
                 break
 
     status_val = "sent" if sent_at is not None else "failed"

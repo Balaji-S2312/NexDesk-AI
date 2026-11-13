@@ -54,5 +54,7 @@ services:
         value: balaji.poet2312s@gmail.com
       - key: RESEND_API_KEY
         sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
       - key: BREVO_API_KEY
         sync: false
