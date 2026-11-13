@@ -1,10 +1,24 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Cpu, Lock, Mail, AlertCircle, ArrowRight, ShieldCheck, UserCheck } from 'lucide-react';
+import { sendVerificationOtpApi } from '../services/api';
+import { PENDING_VERIFY_EMAIL_KEY } from './Register';
+import {
+  Cpu,
+  Lock,
+  Mail,
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  RefreshCw,
+  ShieldCheck,
+  UserCheck,
+  Loader2,
+  CheckCircle2,
+} from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { login, error, clearError } = useAuth();
+  const { login, logout, error, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -12,13 +26,24 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resendingOtp, setResendingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendFeedback, setResendFeedback] = useState<string | null>(null);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
     setLocalError(null);
+    setResendFeedback(null);
     clearError();
 
     if (!email || !password) {
@@ -28,7 +53,16 @@ export const Login: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await login({ email: email.trim().toLowerCase(), password });
+      const loggedInUser = await login({ email: email.trim().toLowerCase(), password });
+      if (loggedInUser && loggedInUser.email_verified === false) {
+        try {
+          sessionStorage.setItem(PENDING_VERIFY_EMAIL_KEY, loggedInUser.email);
+        } catch {
+          // ignore storage limits
+        }
+        setUnverifiedEmail(loggedInUser.email);
+        return;
+      }
       navigate(from, { replace: true });
     } catch (err: unknown) {
       const apiErr = err as Error & { status?: number };
@@ -41,6 +75,38 @@ export const Login: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleResendOtpFromLogin = async () => {
+    if (resendingOtp || resendCooldown > 0) return;
+    setLocalError(null);
+    setResendFeedback(null);
+    setResendingOtp(true);
+    try {
+      const res = await sendVerificationOtpApi();
+      setResendCooldown(res.cooldown_seconds || 60);
+      setResendFeedback(
+        res.message ||
+          'A fresh 6-digit verification code was accepted by the mail server for dispatch. Check your Inbox or Spam folder.'
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to send verification OTP right now.';
+      setLocalError(msg);
+      const match = msg.match(/wait (\d+) seconds/i);
+      if (match) {
+        setResendCooldown(Number(match[1]));
+      }
+    } finally {
+      setResendingOtp(false);
+    }
+  };
+
+  const handleSwitchAccount = () => {
+    logout();
+    setUnverifiedEmail(null);
+    setLocalError(null);
+    setResendFeedback(null);
+    setResendCooldown(0);
   };
 
   const fillCredentials = (demoEmail: string, demoPass: string) => {
@@ -62,12 +128,88 @@ export const Login: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-white py-8 px-6 shadow-sm rounded-2xl sm:px-10 border border-[#DCE4E3]">
-          {(localError || error) && (
-            <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-[#C24141] text-sm flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 shrink-0 text-[#C24141] mt-0.5" />
-              <div>{localError || error}</div>
+          {unverifiedEmail ? (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-bold">
+                    Your email address is not verified. Please verify your email before continuing.
+                  </p>
+                  <p className="text-xs font-mono text-amber-800 break-all">{unverifiedEmail}</p>
+                </div>
+              </div>
+
+              {resendFeedback && (
+                <div
+                  role="status"
+                  className="p-3.5 rounded-xl bg-[#EAF5F0] border border-[#C3E4D6] text-[#287A68] text-xs flex items-start gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{resendFeedback}</span>
+                </div>
+              )}
+
+              {(localError || error) && (
+                <div
+                  role="alert"
+                  className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-[#C24141] text-xs flex items-start gap-2"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{localError || error}</span>
+                </div>
+              )}
+
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => navigate('/verify-email', { state: { email: unverifiedEmail } })}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-[#087E8B] hover:bg-[#075C66] shadow-xs transition-colors"
+                >
+                  <span>Verify Email</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResendOtpFromLogin}
+                  disabled={resendingOtp || resendCooldown > 0}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-[#087E8B] bg-[#DCEFF0] hover:bg-[#cde6e8] border border-[#B5E1E4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {resendingOtp ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Sending Fresh OTP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>
+                        {resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="pt-3 border-t border-[#DCE4E3] text-center">
+                <button
+                  type="button"
+                  onClick={handleSwitchAccount}
+                  className="text-xs font-semibold text-[#526773] hover:text-[#172B3A]"
+                >
+                  Sign in with a different account
+                </button>
+              </div>
             </div>
-          )}
+          ) : (
+            <>
+              {(localError || error) && (
+                <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-[#C24141] text-sm flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0 text-[#C24141] mt-0.5" />
+                  <div>{localError || error}</div>
+                </div>
+              )}
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
@@ -154,6 +296,8 @@ export const Login: React.FC = () => {
             </Link>
             .
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

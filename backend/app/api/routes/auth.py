@@ -21,6 +21,10 @@ from app.schemas.user import (
 )
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.api.deps import get_current_user, get_optional_current_user, require_admin
+from app.services.notifications.email_service import (
+    describe_delivery_status,
+    is_https_provider_configured,
+)
 from app.services.verification_service import (
     OTP_EXPIRE_MINUTES,
     RESEND_COOLDOWN_SECONDS,
@@ -77,12 +81,20 @@ def register(
     db.refresh(new_user)
 
     # Generate 6-digit OTP & backup verification link, then dispatch email
+    delivery_status_label: Optional[str] = None
+    delivery_error_msg: Optional[str] = None
     try:
-        issue_and_send_verification(db, new_user)
+        delivery_log = issue_and_send_verification(db, new_user)
+        delivery_status_label, delivery_error_msg = describe_delivery_status(delivery_log)
     except Exception as exc:
+        delivery_status_label = "failed"
+        delivery_error_msg = "Unable to queue verification email."
         logger.error("Failed to dispatch registration verification email for user_id=%s: %s", new_user.id, exc)
 
-    return new_user
+    user_out = UserResponse.model_validate(new_user)
+    user_out.verification_delivery_status = delivery_status_label
+    user_out.verification_delivery_error = delivery_error_msg
+    return user_out
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -152,13 +164,25 @@ def send_verification_otp_endpoint(
             cooldown_seconds=0,
             expires_in_seconds=0,
             already_verified=True,
+            delivery_stage="already_verified",
         )
 
+    stage = (
+        ("accepted_by_provider" if is_https_provider_configured() else "accepted_by_smtp")
+        if current_user is not None
+        else "request_accepted"
+    )
+    msg = (
+        "Verification code accepted by mail server for dispatch. Check Inbox or Spam."
+        if current_user is not None
+        else "If this email is registered and unverified, a 6-digit verification code has been accepted for dispatch."
+    )
     return OTPDispatchResponse(
-        message="If this email is registered and unverified, a 6-digit verification code has been sent.",
+        message=msg,
         cooldown_seconds=RESEND_COOLDOWN_SECONDS,
         expires_in_seconds=OTP_EXPIRE_MINUTES * 60,
         already_verified=False,
+        delivery_stage=stage,
     )
 
 
@@ -215,10 +239,11 @@ def resend_verification_endpoint(
     """
     process_resend_verification(db, payload.email)
     return OTPDispatchResponse(
-        message="If this email is registered and unverified, a 6-digit verification code has been sent.",
+        message="If this email is registered and unverified, a 6-digit verification code has been accepted for dispatch.",
         cooldown_seconds=RESEND_COOLDOWN_SECONDS,
         expires_in_seconds=OTP_EXPIRE_MINUTES * 60,
         already_verified=False,
+        delivery_stage="request_accepted",
     )
 
 

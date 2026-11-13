@@ -24,6 +24,8 @@ export const Register: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [duplicateAccount, setDuplicateAccount] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [deliveryStatus, setDeliveryStatus] = useState<string | null>(null);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
 
   const { register, clearError } = useAuth();
   const navigate = useNavigate();
@@ -62,6 +64,8 @@ export const Register: React.FC = () => {
       } catch {
         // Ignore storage restrictions
       }
+      setDeliveryStatus(created.verification_delivery_status || null);
+      setDeliveryError(created.verification_delivery_error || null);
       setRegisteredEmail(finalEmail);
     } catch (err: unknown) {
       const apiErr = err as Error & { status?: number };
@@ -122,8 +126,18 @@ export const Register: React.FC = () => {
                 <div className="pt-2 border-t border-[#DCE4E3] flex items-start gap-2 text-[11px] text-[#526773]">
                   <ShieldCheck className="w-4 h-4 text-[#087E8B] shrink-0 mt-0.5" />
                   <span>
-                    <strong>Email verification pending:</strong> A 6-digit verification OTP has been sent to{' '}
-                    <span className="font-semibold text-[#172B3A]">{registeredEmail}</span>. You must verify your email before submitting IT support tickets.
+                    {deliveryStatus === 'failed' || deliveryStatus === 'skipped_unconfigured' ? (
+                      <>
+                        <strong className="text-[#C24141]">Verification email could not be dispatched:</strong>{' '}
+                        {deliveryError || 'Mail delivery is currently unavailable on this server.'}{' '}
+                        Your account stays <strong>Unverified</strong> until OTP verification completes.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Email verification pending:</strong> A 6-digit verification OTP has been accepted by the mail server for dispatch to{' '}
+                        <span className="font-semibold text-[#172B3A]">{registeredEmail}</span>. Check your Inbox or Spam folder and enter the code to verify your account.
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -139,7 +153,16 @@ export const Register: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate('/verify-email', { state: { email: registeredEmail } })}
+                  onClick={() =>
+                    navigate('/verify-email', {
+                      state: {
+                        email: registeredEmail,
+                        otpJustSent:
+                          deliveryStatus === 'accepted_by_smtp' ||
+                          deliveryStatus === 'accepted_by_provider',
+                      },
+                    })
+                  }
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-[#087E8B] bg-[#DCEFF0] hover:bg-[#cde6e8] border border-[#B5E1E4] transition-colors"
                 >
                   <Mail className="w-4 h-4" />

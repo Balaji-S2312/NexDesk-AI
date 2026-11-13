@@ -53,7 +53,9 @@ export const VerifyEmail: React.FC = () => {
   const [resending, setResending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(
-    otpJustSent ? 'A 6-digit verification code has been sent to your registered email.' : null
+    otpJustSent
+      ? 'A 6-digit verification code was accepted by the mail server for dispatch. Check your Inbox and Spam folder.'
+      : null
   );
   const [cooldown, setCooldown] = useState<number>(otpJustSent ? RESEND_COOLDOWN_SECONDS : 0);
   const [expirySeconds, setExpirySeconds] = useState<number>(DEFAULT_OTP_VALIDITY_SECONDS);
@@ -251,7 +253,10 @@ export const VerifyEmail: React.FC = () => {
       setDigits(Array(OTP_LENGTH).fill(''));
       setExpirySeconds(res.expires_in_seconds || DEFAULT_OTP_VALIDITY_SECONDS);
       setCooldown(res.cooldown_seconds || RESEND_COOLDOWN_SECONDS);
-      setInfoMessage('A fresh 6-digit verification code has been sent to your email.');
+      setInfoMessage(
+        res.message ||
+          'A fresh 6-digit verification code was accepted by the mail server for dispatch. Check your Inbox or Spam folder.'
+      );
       focusBox(0);
     } catch (err: unknown) {
       const apiErr = err as Error & { status?: number };

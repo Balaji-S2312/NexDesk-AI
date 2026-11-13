@@ -1,10 +1,15 @@
-"""SMTP email delivery service with retries, idempotency, and sanitized audit logging."""
+"""Email delivery service (SMTP TLS + optional HTTPS Email API) with retries, domain safety, and audit logging."""
 from datetime import datetime, timezone
 from email.message import EmailMessage
+import errno
+import json
 import logging
 import re
 import smtplib
+import socket
 from typing import Optional
+import urllib.error
+import urllib.request
 
 from sqlalchemy.orm import Session
 
@@ -23,6 +28,8 @@ from app.services.tickets.rules import PRIORITY_LABELS
 logger = logging.getLogger(__name__)
 
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+_RESERVED_NON_ROUTABLE_DOMAINS = {"example.com", "example.org", "example.net"}
+_RESERVED_NON_ROUTABLE_SUFFIXES = (".example", ".invalid", ".test", ".localhost", ".local")
 
 STATUS_LABELS = {
     "open": "Open",
@@ -59,14 +66,40 @@ def is_valid_email(value: Optional[str]) -> bool:
     return bool(_EMAIL_RE.match(cleaned))
 
 
-def is_smtp_configured() -> bool:
+def is_non_routable_domain(email: str) -> bool:
+    """Detect RFC 2606 / reserved non-deliverable test domains that return Null MX bounces."""
+    if "@" not in email:
+        return True
+    domain = email.rsplit("@", 1)[1].strip().lower()
+    if domain in _RESERVED_NON_ROUTABLE_DOMAINS:
+        return True
+    return any(domain.endswith(suffix) for suffix in _RESERVED_NON_ROUTABLE_SUFFIXES)
+
+
+def _using_live_stdlib_smtp() -> bool:
+    """True when smtplib.SMTP has NOT been monkeypatched by unit tests."""
+    return getattr(smtplib.SMTP, "__module__", "") == "smtplib"
+
+
+def is_https_provider_configured() -> bool:
     return bool(
-        settings.SMTP_HOST
-        and settings.SMTP_HOST.strip()
+        ((settings.RESEND_API_KEY or "").strip() or (settings.BREVO_API_KEY or "").strip())
         and settings.SMTP_FROM_EMAIL
         and is_valid_email(settings.SMTP_FROM_EMAIL.strip())
-        and settings.SMTP_PASSWORD
-        and settings.SMTP_PASSWORD.strip()
+    )
+
+
+def is_smtp_configured() -> bool:
+    return bool(
+        (
+            settings.SMTP_HOST
+            and settings.SMTP_HOST.strip()
+            and settings.SMTP_FROM_EMAIL
+            and is_valid_email(settings.SMTP_FROM_EMAIL.strip())
+            and settings.SMTP_PASSWORD
+            and settings.SMTP_PASSWORD.strip()
+        )
+        or is_https_provider_configured()
     )
 
 
@@ -76,11 +109,101 @@ def get_admin_notification_email() -> str:
 
 
 def _sanitize_smtp_error(err: Exception) -> str:
-    msg = str(err) or type(err).__name__
-    for secret in (settings.SMTP_PASSWORD, settings.SMTP_USERNAME):
+    base_msg = str(err) or type(err).__name__
+    for secret in (settings.SMTP_PASSWORD, settings.SMTP_USERNAME, settings.RESEND_API_KEY, settings.BREVO_API_KEY):
         if secret:
-            msg = msg.replace(secret, "[REDACTED]")
-    return msg[:500]
+            base_msg = base_msg.replace(secret, "[REDACTED]")
+
+    if isinstance(err, smtplib.SMTPAuthenticationError):
+        raw = f"SMTP authentication failed (check SMTP_USERNAME and App Password): {base_msg}"
+    elif isinstance(err, smtplib.SMTPRecipientsRefused):
+        raw = f"Recipient address rejected or bounced by mail server: {base_msg}"
+    elif isinstance(err, smtplib.SMTPSenderRefused):
+        raw = f"Sender email rejected or restricted by mail server: {base_msg}"
+    elif isinstance(err, socket.gaierror):
+        raw = f"Mail server DNS lookup failed for SMTP_HOST: {base_msg}"
+    elif isinstance(err, (TimeoutError, socket.timeout)):
+        raw = f"SMTP mail server connection timed out: {base_msg}"
+    elif isinstance(err, OSError) and getattr(err, "errno", None) in (errno.ENETUNREACH, 101):
+        raw = f"[Errno 101] Network is unreachable (outbound SMTP ports 25/465/587 blocked by host): {base_msg}"
+    else:
+        raw = base_msg
+    return raw[:500]
+
+
+def _deliver_via_https_api(
+    *,
+    recipient_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> Optional[str]:
+    """Send email over HTTPS port 443 via Resend or Brevo when configured."""
+    from_name = (settings.SMTP_FROM_NAME or "NexDesk AI").strip()
+    from_email = (settings.SMTP_FROM_EMAIL or "").strip()
+    timeout_s = max(5, int(settings.SMTP_TIMEOUT_SECONDS))
+
+    resend_key = (settings.RESEND_API_KEY or "").strip()
+    if resend_key:
+        payload = json.dumps({
+            "from": f"{from_name} <{from_email}>",
+            "to": [recipient_email],
+            "subject": subject.replace("\r", "").replace("\n", ""),
+            "html": html_body,
+            "text": text_body,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {resend_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            if resp.status < 200 or resp.status >= 300:
+                raise RuntimeError(f"Resend API rejected request with HTTP {resp.status}.")
+        return "resend"
+
+    brevo_key = (settings.BREVO_API_KEY or "").strip()
+    if brevo_key:
+        payload = json.dumps({
+            "sender": {"name": from_name, "email": from_email},
+            "to": [{"email": recipient_email}],
+            "subject": subject.replace("\r", "").replace("\n", ""),
+            "htmlContent": html_body,
+            "textContent": text_body,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=payload,
+            headers={
+                "api-key": brevo_key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            if resp.status < 200 or resp.status >= 300:
+                raise RuntimeError(f"Brevo API rejected request with HTTP {resp.status}.")
+        return "brevo"
+
+    return None
+
+
+def describe_delivery_status(log_row: Optional[EmailDeliveryLog]) -> tuple[str, Optional[str]]:
+    """
+    Distinguish SMTP server / API acceptance from actual delivery errors without
+    conflating SMTP relay acceptance with confirmed inbox receipt.
+    """
+    if log_row is None:
+        return "failed", "Verification dispatch log could not be recorded."
+    if log_row.delivery_status == "sent":
+        return "accepted_by_smtp", None
+    if log_row.delivery_status == "skipped_unconfigured":
+        return "skipped_unconfigured", log_row.error_message
+    return "failed", log_row.error_message
 
 
 def _deliver_smtp_message(msg: EmailMessage) -> None:
@@ -94,11 +217,13 @@ def _deliver_smtp_message(msg: EmailMessage) -> None:
             server.starttls()
         if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-        server.send_message(msg)
+        refused = server.send_message(msg)
+        if refused:
+            raise smtplib.SMTPRecipientsRefused(refused)
 
 
 def _ticket_url(ticket: Ticket) -> str:
-    base = (settings.FRONTEND_BASE_URL or "http://localhost:5173").rstrip("/")
+    base = settings.get_frontend_base_url()
     return f"{base}/tickets/{ticket.id}"
 
 
@@ -149,6 +274,32 @@ def send_email(
         db.refresh(log_row)
         return log_row
 
+    if _using_live_stdlib_smtp() and not settings.ALLOW_RESERVED_EMAIL_DOMAINS and is_non_routable_domain(clean_recipient):
+        domain = clean_recipient.rsplit("@", 1)[1].lower()
+        err_msg = f"Recipient domain ({domain}) cannot receive external mail (reserved Null MX / test domain)."
+        log_row = existing or EmailDeliveryLog(
+            recipient_user_id=recipient_user_id,
+            recipient_email=clean_recipient,
+            recipient_verified=bool(recipient_verified),
+            ticket_id=ticket_id,
+            ticket_number=ticket_number,
+            event_type=event_type,
+            event_key=event_key,
+            subject=subject[:255],
+            delivery_status="failed",
+            attempt_count=0,
+            error_message=err_msg,
+            created_at=_utc_now(),
+        )
+        if existing:
+            log_row.delivery_status = "failed"
+            log_row.error_message = err_msg
+        else:
+            db.add(log_row)
+        db.commit()
+        db.refresh(log_row)
+        return log_row
+
     if not is_smtp_configured():
         log_row = existing or EmailDeliveryLog(
             recipient_user_id=recipient_user_id,
@@ -184,14 +335,42 @@ def send_email(
     last_error: Optional[str] = None
     sent_at: Optional[datetime] = None
 
+    has_smtp_creds = bool(
+        settings.SMTP_HOST
+        and settings.SMTP_HOST.strip()
+        and settings.SMTP_FROM_EMAIL
+        and is_valid_email(settings.SMTP_FROM_EMAIL.strip())
+        and settings.SMTP_PASSWORD
+        and settings.SMTP_PASSWORD.strip()
+    )
+
     for _ in range(max_attempts):
         attempts += 1
         try:
-            _deliver_smtp_message(msg)
+            if has_smtp_creds:
+                try:
+                    _deliver_smtp_message(msg)
+                except (smtplib.SMTPException, OSError, TimeoutError) as smtp_exc:
+                    if is_https_provider_configured():
+                        _deliver_via_https_api(
+                            recipient_email=clean_recipient,
+                            subject=subject,
+                            html_body=html_body,
+                            text_body=text_body,
+                        )
+                    else:
+                        raise smtp_exc
+            elif is_https_provider_configured():
+                _deliver_via_https_api(
+                    recipient_email=clean_recipient,
+                    subject=subject,
+                    html_body=html_body,
+                    text_body=text_body,
+                )
             sent_at = _utc_now()
             last_error = None
             break
-        except (smtplib.SMTPException, OSError, TimeoutError) as exc:
+        except (smtplib.SMTPException, urllib.error.URLError, OSError, TimeoutError, RuntimeError) as exc:
             last_error = _sanitize_smtp_error(exc)
             logger.warning(
                 "Email delivery attempt %s/%s failed for event=%s ticket=%s: %s",

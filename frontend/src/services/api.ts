@@ -392,6 +392,7 @@ export interface OTPDispatchResponse {
   cooldown_seconds: number;
   expires_in_seconds: number;
   already_verified: boolean;
+  delivery_stage?: string;
 }
 
 export const sendVerificationOtpApi = async (email?: string): Promise<OTPDispatchResponse> => {

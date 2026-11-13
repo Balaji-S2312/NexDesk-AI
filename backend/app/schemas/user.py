@@ -20,6 +20,8 @@ class UserResponse(UserBase):
     email_verified: bool = False
     email_verified_at: Optional[datetime] = None
     created_at: datetime
+    verification_delivery_status: Optional[str] = None
+    verification_delivery_error: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +48,7 @@ class OTPDispatchResponse(BaseModel):
     cooldown_seconds: int = 60
     expires_in_seconds: int = 600
     already_verified: bool = False
+    delivery_stage: str = "accepted_by_smtp"
 
 
 class ResendVerificationRequest(BaseModel):

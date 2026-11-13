@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     initializeAuth();
   }, []);
 
-  const login = async (credentials: LoginCredentials) => {
+  const login = async (credentials: LoginCredentials): Promise<User> => {
     setIsLoading(true);
     setError(null);
     try {
@@ -43,6 +43,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem(TOKEN_STORAGE_KEY, authData.access_token);
       setToken(authData.access_token);
       setUser(authData.user);
+      return authData.user;
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Login failed. Please check credentials.';
       setError(errorMessage);

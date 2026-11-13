@@ -285,3 +285,61 @@ def test_smtp_failure_handling_does_not_leak_secrets_or_verify_account():
     with patch("app.services.notifications.email_service.smtplib.SMTP", side_effect=smtplib.SMTPException("Gateway down")):
         retry = client.post("/api/auth/send-otp", json={"email": email})
     assert retry.status_code == 503
+    assert reg.json()["verification_delivery_status"] == "failed"
+    assert reg.json()["verification_delivery_error"]
+
+
+def test_frontend_url_resolution_dev_vs_prod():
+    from app.core.config import Settings
+
+    dev_cfg = Settings(ENVIRONMENT="development", FRONTEND_BASE_URL="http://localhost:5173", FRONTEND_URL="")
+    assert dev_cfg.get_frontend_base_url() == "http://localhost:5173"
+
+    prod_cfg = Settings(
+        ENVIRONMENT="production",
+        FRONTEND_BASE_URL="https://nexdesk-ai.vercel.app",
+        FRONTEND_URL="",
+    )
+    assert prod_cfg.get_frontend_base_url() == "https://nexdesk-ai.vercel.app"
+
+    prod_localhost_override_cfg = Settings(
+        ENVIRONMENT="production",
+        FRONTEND_BASE_URL="https://nexdesk-ai.vercel.app",
+        FRONTEND_URL="http://localhost:5173",
+    )
+    assert prod_localhost_override_cfg.get_frontend_base_url() == "https://nexdesk-ai.vercel.app"
+
+
+def test_non_routable_domain_blocked_for_live_smtp_and_error_classification():
+    from app.services.notifications.email_service import (
+        _sanitize_smtp_error,
+        is_non_routable_domain,
+        send_email,
+    )
+
+    assert is_non_routable_domain("qa@example.com") is True
+    assert is_non_routable_domain("user@test.invalid") is True
+    assert is_non_routable_domain("employee@gmail.com") is False
+
+    # Error classification hides secrets and reports clear causes
+    assert "authentication failed" in _sanitize_smtp_error(smtplib.SMTPAuthenticationError(535, b"Bad creds")).lower()
+    assert "unreachable" in _sanitize_smtp_error(OSError(101, "Network is unreachable")).lower()
+    assert "test-unit-smtp-password" not in _sanitize_smtp_error(RuntimeError("secret test-unit-smtp-password"))
+
+    # Under real unmocked stdlib smtplib.SMTP, reserved Null-MX domain must fail cleanly without network call
+    db: Session = TestingSessionLocal()
+    try:
+        uid = uuid.uuid4().hex[:6]
+        log_row = send_email(
+            db,
+            recipient_email=f"bounce_{uid}@example.com",
+            subject="Verify your NexDesk AI account",
+            html_body="<p>Hi</p>",
+            text_body="Hi",
+            event_type="email_verification",
+            event_key=f"non_routable_{uid}",
+        )
+        assert log_row.delivery_status == "failed"
+        assert "Null MX" in (log_row.error_message or "")
+    finally:
+        db.close()

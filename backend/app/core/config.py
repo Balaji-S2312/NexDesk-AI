@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     ADMIN_SEED_PASSWORD: str = ""
     SEED_DEMO_ACCOUNTS: bool = True
     FRONTEND_BASE_URL: str = "http://localhost:5173"
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = ""
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
+    RESEND_API_KEY: str = ""
+    BREVO_API_KEY: str = ""
+    ALLOW_RESERVED_EMAIL_DOMAINS: bool = False
     EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 30
     EMAIL_VERIFICATION_OTP_EXPIRE_MINUTES: int = 10
     EMAIL_VERIFICATION_OTP_MAX_ATTEMPTS: int = 5
@@ -72,6 +75,30 @@ class Settings(BaseSettings):
         elif isinstance(v, list):
             return v
         return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    def get_frontend_base_url(self) -> str:
+        """
+        Resolve the active frontend base URL for verification and ticket links without allowing
+        localhost defaults to leak into production links.
+        """
+        is_prod = self.ENVIRONMENT.lower() == "production"
+        explicit_url = (self.FRONTEND_URL or "").strip().rstrip("/")
+        base_url = (self.FRONTEND_BASE_URL or "").strip().rstrip("/")
+
+        def _is_local(url: str) -> bool:
+            lowered = url.lower()
+            return "localhost" in lowered or "127.0.0.1" in lowered
+
+        if explicit_url and not (is_prod and _is_local(explicit_url) and base_url and not _is_local(base_url)):
+            return explicit_url
+        if base_url and not (is_prod and _is_local(base_url)):
+            return base_url
+        if is_prod and isinstance(self.CORS_ORIGINS, list):
+            for origin in self.CORS_ORIGINS:
+                clean = (origin or "").strip().rstrip("/")
+                if clean and clean.startswith("http") and not _is_local(clean):
+                    return clean
+        return base_url or explicit_url or "http://localhost:5173"
 
     def validate_runtime_settings(self) -> list[str]:
         """Validate critical production configuration without raising on dev/test."""

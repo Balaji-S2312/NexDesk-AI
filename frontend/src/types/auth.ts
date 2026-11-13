@@ -8,6 +8,8 @@ export interface User {
   email_verified?: boolean;
   email_verified_at?: string | null;
   created_at: string;
+  verification_delivery_status?: string | null;
+  verification_delivery_error?: string | null;
 }
 
 export interface AuthResponse {
@@ -33,7 +35,7 @@ export interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<User>;
   register: (credentials: RegisterCredentials) => Promise<User>;
   logout: () => void;
   refreshUser?: () => Promise<void>;

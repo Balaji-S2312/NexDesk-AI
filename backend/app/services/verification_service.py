@@ -121,8 +121,8 @@ def send_verification_email(
     raw_token: str,
     otp_code: Optional[str] = None,
 ) -> EmailDeliveryLog:
-    """Renders verification email (6-digit OTP + backup link) and dispatches via SMTP."""
-    base_url = (settings.FRONTEND_URL or settings.FRONTEND_BASE_URL or "http://localhost:5173").rstrip("/")
+    """Renders verification email (6-digit OTP + backup link) and dispatches via email transport."""
+    base_url = settings.get_frontend_base_url()
     verification_url = f"{base_url}/verify-email?token={raw_token}"
 
     template = render_email_verification(
@@ -436,9 +436,14 @@ def request_verification_otp(
     _enforce_otp_rate_limits(db, target_user)
     delivery_log = issue_and_send_verification(db, target_user)
     if delivery_log.delivery_status == "failed":
+        detail_msg = (
+            (delivery_log.error_message or "Unable to send verification email right now.")
+            if current_user is not None
+            else "Unable to send verification email right now. Please check email delivery configuration or try again shortly."
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to send verification email right now. Please try again shortly.",
+            detail=detail_msg,
         )
     return True
 
