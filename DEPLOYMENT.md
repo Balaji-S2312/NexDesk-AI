@@ -8,8 +8,8 @@
 | **Frontend Production Build** | **Configured & Tested** | Production `tsc && vite build` clean (`0` errors), `/api` production fallback (no hardcoded `localhost`), SPA routing configs (`vercel.json`, `public/_redirects`), demo credential helper disabled in standard `PROD` builds. |
 | **Container & Cloud Manifests** | **Configured** | `render.yaml`, `Procfile`, `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.prod.yml`, sanitized `.env.example`, and `backend/scripts/migrate_sqlite_to_postgres.py`. |
 | **SMTP Email Integration** | **Configured & Live-Tested** | Verified live Gmail SMTP delivery (`smtp.gmail.com:587`) to `balaji.poet2312s@gmail.com`. |
-| **Frontend Public Deployment (Vercel)** | **LIVE (`https://nexdesk-ai.vercel.app`)** | Connected to `Balaji-S2312/NexDesk-AI` (`rootDirectory: frontend`, Vite framework). HTTPS, SPA rewrites (`/login` → `200 OK`), and security headers verified. Waiting on `VITE_API_URL` once backend is hosted. |
-| **Backend Public URL Deployment** | **Pending Cloud Host** | Code pushed to `main` with `render.yaml`, `Procfile`, and `backend/Dockerfile`. Railway project creation returned `Your trial has expired. Please select a plan to continue using Railway.` Deploy `backend/` on Render / Railway / Hugging Face Docker Space and set `VITE_API_URL` in Vercel. |
+| **Frontend Public Deployment (Vercel)** | **LIVE (`https://nexdesk-ai.vercel.app`)** | Connected to `Balaji-S2312/NexDesk-AI` (`rootDirectory: frontend`, Vite framework). Wired to `VITE_API_URL=https://nexdesk-backend-z98v.onrender.com/api`. HTTPS, SPA rewrites, security headers, Admin Dashboard telemetry, Incidents, Notifications, and AI Assistant verified live. |
+| **Backend Public Deployment (Render)** | **LIVE (`https://nexdesk-backend-z98v.onrender.com`)** | Python Web Service (`rootDir: backend`, connected to `Balaji-S2312/NexDesk-AI`). Optimized for 512 MB free-tier containers (`vector_store.count() == 0` fast path + ChromaDB `ONNXMiniLM_L6_V2` low-memory embeddings). Connected to external Neon PostgreSQL, Groq LLM API, and Gmail SMTP. |
 
 ---
 
@@ -30,10 +30,10 @@ Because NexDesk AI uses **Sentence Transformers (`all-MiniLM-L6-v2`) + PyTorch +
 
 ## 3. Hosting Limitations & Important Architectural Notes
 
-1. **Render Free Tier Ephemeral Filesystem & Memory (~512 MB RAM):**
-   - Free Render Web Services do **not** provide persistent disk storage across deploys/restarts (uploaded PDFs/DOCX and `./chroma_db` vectors will reset on redeploy) and spin down after 15 minutes of inactivity.
-   - Furthermore, loading `sentence-transformers` (`all-MiniLM-L6-v2`) + PyTorch typically consumes **~600–900 MB RAM**, which can trigger Out-Of-Memory (OOM) kills on strict 512 MB free instances.
-   - **Recommendation:** Use a **2 GB RAM tier** (e.g., Render Standard, Railway Hobby/Pro, or a VPS with `docker-compose.prod.yml`) and mount a persistent volume at `/app/chroma_db` and `/app/uploads`.
+1. **Render Free Tier Ephemeral Vector Disk & 512 MB RAM Optimization:**
+   - Free Render Web Services spin down after 15 minutes of inactivity (first request after idle experiences a ~30–60s cold start) and do **not** provide persistent local disk across deploys/restarts (uploaded PDFs/DOCX and `./chroma_db` vectors reset on redeploy unless a persistent disk is attached, whereas relational PostgreSQL data in Neon persists).
+   - Standard PyTorch + `sentence-transformers` exceeds 512 MB RAM during model load. `app/services/rag/embeddings.py` and `retriever.py` now detect constrained containers (`<= 768 MB` cgroup limit or `LOW_MEMORY_EMBEDDINGS=true`), skip embedding loads when the index is empty, and switch to lightweight 384-dim `ONNXMiniLM_L6_V2` (`onnxruntime`).
+   - **Recommendation for Heavy Knowledge Bases:** Attach a Render Persistent Disk at `/var/data` (or upgrade tier / use `docker-compose.prod.yml`) so uploaded KB documents and ChromaDB vectors survive container restarts.
 2. **PostgreSQL vs. SQLite:**
    - Local development runs cleanly on SQLite (`nexdesk.db`).
    - Production deployments should set `DATABASE_URL` to a managed PostgreSQL instance. `app/database/session.py` automatically rewrites `postgres://` to `postgresql://` and enables `pool_pre_ping=True`, while `app/database/init_db.py` skips SQLite-only `ALTER TABLE` backfills when running on PostgreSQL.
@@ -154,20 +154,23 @@ VITE_API_URL=https://your-backend.onrender.com/api
 
 ---
 
-## 6. Post-Deployment Verification Checklist
+## 6. Live Production Verification Summary (2026-11-13)
 
-After deploying to your live URLs, verify:
-- [ ] `GET https://<backend>/api/health` returns `{"status": "healthy", "database": "healthy"}`.
-- [ ] Employee registration triggers verification email to inbox and `/verify-email` activates the account.
-- [ ] Unverified employees receive `403` on ticket creation.
-- [ ] Verified employee ticket creation dispatches email to both employee and `balaji.poet2312s@gmail.com`.
-- [ ] RAG knowledge base document upload persists across backend restarts and returns cited sources in AI chat.
-- [ ] Admin dashboard KPIs, Recharts trends, SLA breach indicators, and audit logs load over HTTPS with zero CORS or console errors.
+- **Live Frontend (Vercel):** `https://nexdesk-ai.vercel.app` (`HTTP 200`, SPA routing & security headers active, `VITE_API_URL` pointed to Render).
+- **Live Backend (Render):** `https://nexdesk-backend-z98v.onrender.com`
+  - [x] `GET /api/health` -> `200 OK` (`"status": "healthy"`, `"environment": "production"`, `"database": "healthy"`).
+  - [x] `POST /api/auth/login` -> `200 OK` for Admin & Employee; `401` on invalid credentials.
+  - [x] `GET /api/dashboard/stats`, `/api/analytics/summary`, `/api/sla/overview`, `/api/notifications` -> `200 OK` from Vercel origin with CORS headers.
+  - [x] `POST /api/chat` (Groq LLM + tool orchestration) -> `200 OK` with zero OOM or 502 errors.
+  - [x] `POST /api/knowledge/upload` + RAG citation chat + `DELETE /api/knowledge/documents/{id}` -> `201` / `200 OK` using low-memory `ONNXMiniLM_L6_V2` embeddings inside Render 512 MB RAM.
+  - [x] `POST /api/tickets` -> `201 Created`, `PATCH /api/tickets/{id}` -> `200 OK` (`in_progress` -> `resolved`), real-time notifications updated in UI.
+  - [x] Live browser UI verification on `https://nexdesk-ai.vercel.app`: Admin Dashboard KPIs & Recharts trends, Incidents queue, Notification Bell, and AI Assistant chat verified cleanly with zero 4xx/5xx/CORS errors.
 
 ---
 
-## 7. Pre-Deployment Verification Summary (Local Sandbox)
+## 7. Local Pre-Push Verification Summary
 
-- **Backend Automated Tests:** Verified via `pytest backend/tests/ -q` (Modules 1–13 including health, production config validation, RBAC, RAG, Agentic HITL, SLA, and SMTP verification).
-- **Frontend Production Build:** Verified via `tsc && vite build` (`0` TypeScript errors, clean production bundle in `frontend/dist/`).
+- **Backend Automated Tests (`pytest backend/tests/ -q`):** **136 passed, 0 failed** (Modules 1–13 including low-memory OOM/RAG changes, PostgreSQL compatibility, health checks, RBAC, Agentic HITL, SLA, and SMTP verification).
+- **Low-Memory ONNX Embedding Check (`LOW_MEMORY_EMBEDDINGS=true`):** Verified 384-dim embeddings generated cleanly via `ONNXMiniLM_L6_V2`.
+- **Frontend Production Build (`tsc && vite build`):** `0` TypeScript errors, clean production bundle in `frontend/dist/`.
 - **Live SMTP Delivery:** Confirmed live delivery over `smtp.gmail.com:587` to `balaji.poet2312s@gmail.com`.

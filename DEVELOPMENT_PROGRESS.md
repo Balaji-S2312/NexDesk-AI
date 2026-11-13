@@ -23,7 +23,7 @@ NexDesk AI is an Agentic Generative AI-powered IT Service Management (ITSM) plat
 | **Module 11** | End-to-End Integration, QA & Verification | **COMPLETED** | 2026-11-13 |
 | **Module 12A** | Global Contrast & Enterprise Light UI System (Deep Teal) | **COMPLETED** | 2026-11-13 |
 | **Module 12B** | Email Verification & Automated Gmail SMTP Notifications | **COMPLETED** | 2026-11-13 |
-| **Module 13** | Cloud Deployment Preparation, Docker & Production Hardening | **READY FOR CLOUD LAUNCH** | 2026-11-13 |
+| **Module 13** | Cloud Deployment, Production Hardening & Live Cloud Launch | **COMPLETED & LIVE** | 2026-11-13 |
 
 ---
 
@@ -337,5 +337,8 @@ NexDesk AI is an Agentic Generative AI-powered IT Service Management (ITSM) plat
   - Enhanced `GET /api/health` to verify real SQL connectivity and ChromaDB path status without leaking secrets.
   - Added startup production environment checks (`Settings.validate_runtime_settings()`) and gated demo login helpers out of production bundles unless `VITE_ENABLE_DEMO_LOGIN=true`.
   - Added `frontend/vercel.json`, `frontend/public/_redirects`, `render.yaml`, `Procfile`, `backend/Dockerfile`, `frontend/Dockerfile`, and `docker-compose.prod.yml`.
-  - Verified **136 passed, 0 failed** on backend `pytest` and clean production `tsc && vite build`.
-  - Pending external push to GitHub / cloud provider deployment (`Vercel` + `Render`/`Railway`) — no live public cloud URL exists until connected to user's cloud accounts.
+  - Verified **136 passed, 0 failed** on backend `pytest` (including empty-index RAG fast path + low-memory `ONNXMiniLM_L6_V2` fallback for 512 MB containers) and clean production `tsc && vite build`.
+  - **Live Cloud Deployment Verified:**
+    - Frontend deployed on Vercel: `https://nexdesk-ai.vercel.app` (wired to `VITE_API_URL=https://nexdesk-backend-z98v.onrender.com/api`).
+    - Backend deployed on Render + Neon PostgreSQL + Groq LLM + Gmail SMTP: `https://nexdesk-backend-z98v.onrender.com`.
+    - Live E2E API & Vercel browser UI verification passed across `/api/health`, RBAC login, Admin Dashboard telemetry, Incidents, Notifications, Ticket lifecycle (`INC0000001`), KB upload + ONNX RAG retrieval, and Groq AI Assistant chat (`200 OK`, zero CORS/502 errors).

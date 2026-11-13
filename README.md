@@ -300,9 +300,13 @@ cp .env.example .env
 
 ---
 
-## 13. Running the Application
+## 13. Live Cloud Deployment & Local Execution
 
-### Start Backend Daemon
+- **Live Frontend (Vercel):** [https://nexdesk-ai.vercel.app](https://nexdesk-ai.vercel.app)
+- **Live Backend API (Render):** [https://nexdesk-backend-z98v.onrender.com/api/health](https://nexdesk-backend-z98v.onrender.com/api/health)
+- **Cloud Setup, Constraints & Verification:** See [DEPLOYMENT.md](DEPLOYMENT.md)
+
+### Start Backend Daemon (Local)
 ```bash
 cd backend
 .venv\Scripts\activate  # On Windows
