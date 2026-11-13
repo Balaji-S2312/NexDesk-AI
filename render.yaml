@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
@@ -27,13 +27,15 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: nexdesk-postgres
-          property: connectionString
+        sync: false
       - key: CHROMA_PERSIST_DIRECTORY
         value: ./chroma_db
       - key: CORS_ORIGINS
-        sync: false
+        value: '["https://nexdesk-ai.vercel.app"]'
+      - key: FRONTEND_BASE_URL
+        value: https://nexdesk-ai.vercel.app
+      - key: SEED_DEMO_ACCOUNTS
+        value: "true"
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -50,11 +52,3 @@ services:
         value: balaji.poet2312s@gmail.com
       - key: ADMIN_EMAIL
         value: balaji.poet2312s@gmail.com
-
-databases:
-  # Managed PostgreSQL Database
-  - name: nexdesk-postgres
-    region: oregon
-    plan: free
-    databaseName: nexdesk
-    user: nexdesk_user
