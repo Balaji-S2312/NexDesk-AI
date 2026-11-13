@@ -1,0 +1,60 @@
+services:
+  # Backend FastAPI Web Service
+  - type: web
+    name: nexdesk-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: ENVIRONMENT
+        value: production
+      - key: PROJECT_NAME
+        value: NexDesk AI
+      - key: VERSION
+        value: 0.1.0
+      - key: API_V1_STR
+        value: /api
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexdesk-postgres
+          property: connectionString
+      - key: CHROMA_PERSIST_DIRECTORY
+        value: ./chroma_db
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USERNAME
+        value: balaji.poet2312s@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        value: balaji.poet2312s@gmail.com
+      - key: SMTP_FROM_NAME
+        value: NexDesk AI – IT Service Desk
+      - key: ADMIN_NOTIFICATION_EMAIL
+        value: balaji.poet2312s@gmail.com
+      - key: ADMIN_EMAIL
+        value: balaji.poet2312s@gmail.com
+
+databases:
+  # Managed PostgreSQL Database
+  - name: nexdesk-postgres
+    region: oregon
+    plan: free
+    databaseName: nexdesk
+    user: nexdesk_user

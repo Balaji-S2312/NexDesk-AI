@@ -1,0 +1,48 @@
+"""Notification and email service exports (Module 9A)."""
+from app.services.notifications.email_service import (
+    get_admin_notification_email,
+    is_smtp_configured,
+    is_valid_email,
+    send_email,
+    send_ticket_assignment_email,
+    send_ticket_resolution_email,
+    send_ticket_status_email,
+    send_ticket_submission_email,
+)
+from app.services.notifications.notification_service import (
+    NotificationAccessError,
+    NotificationNotFoundError,
+    create_notification,
+    get_unread_count,
+    get_user_notifications,
+    mark_all_notifications_read,
+    mark_notification_read,
+    notify_ticket_assigned,
+    notify_ticket_resolved,
+    notify_ticket_status_changed,
+    notify_ticket_submitted,
+    serialize_notification,
+)
+
+__all__ = [
+    "NotificationAccessError",
+    "NotificationNotFoundError",
+    "create_notification",
+    "get_admin_notification_email",
+    "get_unread_count",
+    "get_user_notifications",
+    "is_smtp_configured",
+    "is_valid_email",
+    "mark_all_notifications_read",
+    "mark_notification_read",
+    "notify_ticket_assigned",
+    "notify_ticket_resolved",
+    "notify_ticket_status_changed",
+    "notify_ticket_submitted",
+    "send_email",
+    "send_ticket_assignment_email",
+    "send_ticket_resolution_email",
+    "send_ticket_status_email",
+    "send_ticket_submission_email",
+    "serialize_notification",
+]

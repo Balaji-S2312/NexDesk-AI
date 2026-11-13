@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexdesk-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: nexdesk_user
+      POSTGRES_PASSWORD: nexdesk_secure_production_password_2026
+      POSTGRES_DB: nexdesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexdesk_user -d nexdesk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexdesk-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      PROJECT_NAME: "NexDesk AI"
+      VERSION: "0.1.0"
+      API_V1_STR: "/api"
+      DATABASE_URL: "postgresql://nexdesk_user:nexdesk_secure_production_password_2026@postgres:5432/nexdesk"
+      CHROMA_PERSIST_DIRECTORY: "/app/chroma_db"
+      JWT_SECRET: "${JWT_SECRET:-production_secret_key_minimum_32_characters_long_99999}"
+      GROQ_API_KEY: "${GROQ_API_KEY}"
+      GROQ_MODEL: "openai/gpt-oss-120b"
+      SMTP_HOST: "smtp.gmail.com"
+      SMTP_PORT: 587
+      SMTP_USERNAME: "${SMTP_USERNAME:-balaji.poet2312s@gmail.com}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD}"
+      SMTP_FROM_EMAIL: "${SMTP_FROM_EMAIL:-balaji.poet2312s@gmail.com}"
+      SMTP_FROM_NAME: "NexDesk AI – IT Service Desk"
+      ADMIN_NOTIFICATION_EMAIL: "${ADMIN_NOTIFICATION_EMAIL:-balaji.poet2312s@gmail.com}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-balaji.poet2312s@gmail.com}"
+      CORS_ORIGINS: '["http://localhost", "http://127.0.0.1", "http://localhost:80"]'
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadata:/app/chroma_db
+      - uploaddata:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: nexdesk-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+  chromadata:
+  uploaddata:
