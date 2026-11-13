@@ -8,7 +8,8 @@
 | **Frontend Production Build** | **Configured & Tested** | Production `tsc && vite build` clean (`0` errors), `/api` production fallback (no hardcoded `localhost`), SPA routing configs (`vercel.json`, `public/_redirects`), demo credential helper disabled in standard `PROD` builds. |
 | **Container & Cloud Manifests** | **Configured** | `render.yaml`, `Procfile`, `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.prod.yml`, sanitized `.env.example`, and `backend/scripts/migrate_sqlite_to_postgres.py`. |
 | **SMTP Email Integration** | **Configured & Live-Tested** | Verified live Gmail SMTP delivery (`smtp.gmail.com:587`) to `balaji.poet2312s@gmail.com`. |
-| **Cloud Public URL Deployment** | **Pending Cloud Account / Git Push** | Local Git repo initialized and `.gitignore` verified, but remote repository (`https://github.com/Balaji-S2312/NexDesk-AI`) is not yet created/pushed and no cloud provider CLI tokens (Vercel/Render/Railway) are authenticated. |
+| **Frontend Public Deployment (Vercel)** | **LIVE (`https://nexdesk-ai.vercel.app`)** | Connected to `Balaji-S2312/NexDesk-AI` (`rootDirectory: frontend`, Vite framework). HTTPS, SPA rewrites (`/login` → `200 OK`), and security headers verified. Waiting on `VITE_API_URL` once backend is hosted. |
+| **Backend Public URL Deployment** | **Pending Cloud Host** | Code pushed to `main` with `render.yaml`, `Procfile`, and `backend/Dockerfile`. Railway project creation returned `Your trial has expired. Please select a plan to continue using Railway.` Deploy `backend/` on Render / Railway / Hugging Face Docker Space and set `VITE_API_URL` in Vercel. |
 
 ---
 
