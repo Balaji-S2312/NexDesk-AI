@@ -88,6 +88,9 @@ class ChromaVectorStore:
             )
         return len(ids)
 
+    def count(self) -> int:
+        return int(self._get_collection().count())
+
     def delete_document_chunks(self, document_id: int) -> int:
         collection = self._get_collection()
         existing = collection.get(where={"document_id": int(document_id)}, include=[])

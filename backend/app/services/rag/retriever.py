@@ -63,6 +63,10 @@ def retrieve_relevant_context(
     if not cleaned_query:
         return RetrievalResult(query=cleaned_query, threshold=effective_threshold)
 
+    # Skip heavy embedding model initialization when vector store has no indexed chunks
+    if vector_store.count() == 0:
+        return RetrievalResult(query=cleaned_query, threshold=effective_threshold)
+
     query_embedding = embedding_service.embed_query(cleaned_query)
     if not query_embedding:
         return RetrievalResult(query=cleaned_query, threshold=effective_threshold)
