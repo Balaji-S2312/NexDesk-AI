@@ -35,18 +35,45 @@ import {
 } from '../types/sla';
 
 const TOKEN_STORAGE_KEY = 'nexdesk_auth_token';
+const DEFAULT_PROD_API_URL = 'https://nexdesk-backend-z98v.onrender.com/api';
+const DEFAULT_DEV_API_URL = 'http://localhost:8000/api';
 
-const defaultBaseURL = import.meta.env.PROD ? '/api' : 'http://localhost:8000/api';
+/**
+ * Resolve the API base URL and guarantee a single `/api` suffix so deployed frontends
+ * never send bare `/auth/login` or `/auth/register` requests or duplicate `/api/api`.
+ */
+export function resolveApiBaseUrl(rawUrl?: string): string {
+  const fallback = import.meta.env.PROD ? DEFAULT_PROD_API_URL : DEFAULT_DEV_API_URL;
+  const candidate = (rawUrl || '').trim();
+  if (!candidate) {
+    return fallback;
+  }
+
+  const normalized = candidate.replace(/\/+$/, '');
+  if (!normalized || normalized === '/api' || /\/api$/i.test(normalized)) {
+    return (normalized || fallback).replace(/(?:\/api)+$/i, '/api');
+  }
+
+  return `${normalized}/api`;
+}
+
+const resolvedBaseURL = resolveApiBaseUrl(
+  import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
+);
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || defaultBaseURL,
+  baseURL: resolvedBaseURL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor: inject scoped Bearer token from localStorage
+// Request interceptor: inject scoped Bearer token and strip accidental duplicate /api/ prefixes
 api.interceptors.request.use((config) => {
+  if (config.url && config.url.startsWith('/api/') && resolvedBaseURL.endsWith('/api')) {
+    config.url = config.url.slice(4);
+  }
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
